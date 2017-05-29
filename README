@@ -1,0 +1,3 @@
+rm -rf build;python setup.py build && python setup.py install
+gcc -Wall -lm -I../include/ -o mesh.exe mesh.c main.c -std=c99
+gcc -Wall -lm -I../include/ -o mesh.exe mesh.c main.c -std=c99 -D DEBUG -pedantic
