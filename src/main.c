@@ -72,6 +72,21 @@ atom_t *readCoordinates(char *fname, int *_nAtom) {
     return atomArray;
 }
 
+void freeBuffers(double *x, double *y, double *z, char *chainID, char **resID, char **resName,  char **name, int n) {
+    free(x);
+    free(y);
+    free(z);
+    free(chainID);
+    for (int i = 0; i < n ; i++) {
+        free(resID[i]);
+        free(resName[i]);
+        free(name[i]);
+    }
+    free(resID);
+    free(resName);
+    free(name);
+}
+
 int readFile(char *fname, double **x, double **y, double **z, char **chainID, char ***resID, char ***resName,  char ***name) {
     double xBuffer[20000];
     double yBuffer[20000];
@@ -128,9 +143,75 @@ int readFile(char *fname, double **x, double **y, double **z, char **chainID, ch
         (*name)[i] = malloc((strlen(nameBuffer[i]) + 1) * sizeof(char));
         strcpy((*name)[i], nameBuffer[i]);
     }
-
+    fclose(fp);
     return n;
 }
+
+
+void runSingle(char *fname, float dist) {
+    /*  ONE SET OF COORDINATES  */
+    double *x;
+    double *y;
+    double *z;
+    char *chainID;
+    char **resSeq;
+    char **resName;
+    char **atomName;
+    atom_t *atomList = NULL;
+    int nAtom = 0;
+
+    printf("Reading coordinates from %s\n", fname);
+    nAtom = readFile(fname, &x, &y, &z, &chainID, &resSeq, &resName, &atomName);
+    atomList = readFromArrays(nAtom, x, y, z, chainID, resSeq, resName, atomName);
+    char *ccmap = residueContactMap(atomList, nAtom, dist);
+
+    atomList = destroyAtomList(atomList, nAtom);
+
+    printf("JSON Single ccmap\n%s\n", ccmap);
+    freeBuffers(x, y, z, chainID, resSeq, resName, atomName, nAtom);
+    free(ccmap);
+}
+
+void runDual(char *iFname, char *jFname, float dist) {
+    /*  ONE SET OF COORDINATES  */
+    double *x;
+    double *y;
+    double *z;
+    char *chainID;
+    char **resSeq;
+    char **resName;
+    char **atomName;
+    atom_t *atomList = NULL;
+    int nAtom = 0;
+    printf("Reading coordinates from %s\n", iFname);
+    nAtom = readFile(iFname, &x, &y, &z, &chainID, &resSeq, &resName, &atomName);
+    atomList = readFromArrays(nAtom, x, y, z, chainID, resSeq, resName, atomName);
+
+    /*  OPTIONAL SECOND SET OF COORDINATES  */
+    double *x_other;
+    double *y_other;
+    double *z_other;
+    char *chainID_other;
+    char **resSeq_other;
+    char **resName_other;
+    char **atomName_other;
+    atom_t *atomList_other = NULL;
+    int nAtom_other = 0;
+    nAtom_other = readFile(jFname, &x_other, &y_other, &z_other, &chainID_other, &resSeq_other, &resName_other, &atomName_other);
+    atomList_other = readFromArrays(nAtom_other, x_other, y_other, z_other, chainID_other, resSeq_other, resName_other, atomName_other);
+
+    char *ccmap = residueContactMap_DUAL(atomList, nAtom, atomList_other, nAtom_other, dist);
+
+// CLEAR
+    atomList = destroyAtomList(atomList, nAtom);
+    atomList_other = destroyAtomList(atomList_other, nAtom_other);
+    freeBuffers(x, y, z, chainID, resSeq, resName, atomName, nAtom);
+    freeBuffers(x_other, y_other, z_other, chainID_other, resSeq_other, resName_other, atomName_other, nAtom_other);
+
+    printf("JSON Dual ccmap\n%s\n", ccmap);
+    free(ccmap);
+}
+
 
 int main (int argc, char *argv[]) {
 
@@ -172,49 +253,11 @@ int main (int argc, char *argv[]) {
         exit(2);
     }
     double step = atof(optDist);
-    char *ccmap = NULL;
 
-    /* emulates the Python inputs */
-
-    /*  ONE SET OF COORDINATES  */
-    double *x;
-    double *y;
-    double *z;
-    char *chainID;
-    char **resSeq;
-    char **resName;
-    char **atomName;
-    atom_t *atomList = NULL;
-    int nAtom = 0;
-    printf("Reading coordinates from %s\n", iFile);
-    nAtom = readFile(iFile, &x, &y, &z, &chainID, &resSeq, &resName, &atomName);
-    atomList = readFromArrays(nAtom, x, y, z, chainID, resSeq, resName, atomName);
-    if (jFile == NULL) {
-        ccmap = residueContactMap(atomList, nAtom, step);
-        //CLEAR
-        atomList = destroyAtomList(atomList, nAtom);
-
-        printf("JSON ccmap\n%s\n", ccmap);
-
-        exit(1);
-    }
-    /*  OPTIONAL SECOND SET OF COORDINATES  */
-    double *x_other;
-    double *y_other;
-    double *z_other;
-    char *chainID_other;
-    char **resSeq_other;
-    char **resName_other;
-    char **atomName_other;
-    atom_t *atomList_other = NULL;
-    int nAtom_oher = 0;
-    nAtom_other = readFile(jFile, &x_other, &y_other, &z_other, &chainID_other, &resSeq_other, &resName_other, &atomName_other);
-    atomList_other = readFromArrays(nAtom_other, x_other, y_other, z_other, chainID_other, resSeq_other, resName_other, atomName_other);
-
-// CLEAR
-    atomList = destroyAtomList(atomList, nAtom);
-    atomList_other = destroyAtomList(atomList_other, nAtom_other);
-
+    if(jFile == NULL)
+        runSingle(iFile, step);
+    else
+        runDual(iFile, jFile, step);
 
     exit(1);
 

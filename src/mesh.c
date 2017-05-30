@@ -80,9 +80,9 @@ char *residueContactMap(atom_t * atomList, int nAtom, double ctc_dist) {
 #endif
 
     double step = ctc_dist;
-    meshContainer_t *results = createMeshContainer(atomList, nAtom, step);
+    meshContainer_t *results = createMeshContainer(atomList, nAtom, NULL, 0, step);
     int nPairs;
-    enumerate(results, ctc_dist, &nPairs);
+    enumerate(results, ctc_dist, &nPairs, false);
 
     char *jsonString = jsonifyContactList(residueList);
 
@@ -96,6 +96,53 @@ char *residueContactMap(atom_t * atomList, int nAtom, double ctc_dist) {
     residueList = destroyResidueList(residueList);
     results = destroyMeshContainer(results);
     return jsonString;
+}
+
+char *residueContactMap_DUAL(atom_t *iAtomList, int iAtom, atom_t *jAtomList, int jAtom, double ctc_dist) {
+    residue_t *iResidueList = createResidueList(iAtomList);
+    residue_t *jResidueList = createResidueList(jAtomList);
+
+#ifdef DEBUG
+#ifdef AS_PYTHON_EXTENSION
+        PySys_WriteStdout("Computing residue contact map w/ %.2g Angstrom step\n", ctc_dist);
+#endif
+    printf("Computing residue contact map w/ %.2g Angstrom step\n", ctc_dist);
+#endif
+
+    double step = ctc_dist;
+    meshContainer_t *results = createMeshContainer(iAtomList, iAtom, jAtomList, jAtom, step);
+    
+    //meshContainer_t *results = createMeshContainer(atomList, nAtom, step);
+    
+    //RESUME HERE
+
+    int nPairs;
+    enumerate(results, ctc_dist, &nPairs, true);
+
+    // Link the two residues list
+    fuseResidueLists(iResidueList, jResidueList);
+    char *jsonString = jsonifyContactList(iResidueList);
+
+#ifdef DEBUG
+    printContactList(iResidueList);
+    printf("%s\n", jsonString);
+#ifdef AS_PYTHON_EXTENSION
+    PySys_WriteStderr("%s\n", jsonString);
+#endif
+#endif
+    iResidueList = destroyResidueList(iResidueList);
+    results = destroyMeshContainer(results);
+    return jsonString;
+}
+
+// connect j with trailing i element
+// Both are chained list , fuse them should be safe in terms of destruction
+void fuseResidueLists(residue_t *iResidueList, residue_t *jResidueList) {
+    residue_t *head = iResidueList;
+    while(head->nextResidueList != NULL)
+        head = head->nextResidueList;
+    head->nextResidueList = jResidueList;
+    jResidueList->prevResidueList = head;
 }
 
 void printContactList(residue_t *residueList) {
@@ -331,6 +378,12 @@ mesh_t *createMesh(int iDim, int jDim, int kDim) {
                 i_mesh->grid[i][j][k].memberCount = 0;
                 i_mesh->grid[i][j][k].neighbourCount = 0;
                 i_mesh->grid[i][j][k].members = NULL;
+
+                i_mesh->grid[i][j][k].iMembers = NULL;
+                i_mesh->grid[i][j][k].jMembers = NULL;
+
+                i_mesh->grid[i][j][k].iMemberCount = 0;
+                i_mesh->grid[i][j][k].jMemberCount = 0;
             }
         }
     }
@@ -353,10 +406,17 @@ void printMesh(mesh_t *mesh) {
 
 // Go through none empty cells
 // Get its following cells neighbours
-void enumerate(meshContainer_t *meshContainer, double ctc_dist, int *nPairs) {
+void enumerate(meshContainer_t *meshContainer, double ctc_dist, int *nPairs, bool dualBool) {
     mesh_t *mesh = meshContainer->mesh;
     cell_t **cellList = meshContainer->filledCells;
     int nCells = meshContainer->nFilled;
+    //int (*functionPtr)(int,int);
+    void (*pCellEnumerator)(cell_t*, cell_t*, double , int*, int*);
+
+    if (dualBool)
+        pCellEnumerator = &pairwiseCellEnumerate_DUAL;
+    else 
+        pCellEnumerator = &pairwiseCellEnumerate;
 
     cell_t ***grid = mesh->grid;
     cell_t *cur_cell;
@@ -392,7 +452,8 @@ void enumerate(meshContainer_t *meshContainer, double ctc_dist, int *nPairs) {
                         printf("%d ", grid[i][j][k].n);
                         continue;
                     }
-                    parwiseCellEnumerate(cur_cell, &grid[i][j][k], ctc_dist, &nContacts, &nDist); // Enumerate contact w/ cell
+                    //parwiseCellEnumerate(cur_cell, &grid[i][j][k], ctc_dist, &nContacts, &nDist); // Enumerate contact w/ cell
+                    (*pCellEnumerator)(cur_cell, &grid[i][j][k], ctc_dist, &nContacts, &nDist);
                 }
             }
         }
@@ -405,7 +466,7 @@ void enumerate(meshContainer_t *meshContainer, double ctc_dist, int *nPairs) {
 #endif
 }
 
-void parwiseCellEnumerate(cell_t *refCell, cell_t *targetCell, double ctc_dist, int *nContacts, int *nDist) {
+void pairwiseCellEnumerate(cell_t *refCell, cell_t *targetCell, double ctc_dist, int *nContacts, int *nDist) {
     atom_t *iAtom, *jAtom;
 
     char iAtomString[81];
@@ -447,6 +508,47 @@ void parwiseCellEnumerate(cell_t *refCell, cell_t *targetCell, double ctc_dist, 
     }
 }
 
+void pairwiseCellEnumerate_DUAL(cell_t *refCell, cell_t *targetCell, double ctc_dist, int *nContacts, int *nDist) {
+    atom_t *iAtom, *jAtom;
+
+    char iAtomString[81];
+    char jAtomString[81];
+
+    if(refCell->memberCount == 0 || targetCell->memberCount == 0) return;
+#ifdef DEBUG
+    printf("\n*********\nDUAL Pairwise cell atom enumeration: [%d %d %d]// [%d %d %d]\n", refCell->i, refCell->j, refCell->k, targetCell->i, targetCell->j, targetCell->k);
+#ifdef AS_PYTHON_EXTENSION
+    PySys_WriteStdout("DUAL Pairwise cell atom enumeration: [%d %d %d]// [%d %d %d]\n", refCell->i, refCell->j, refCell->k, targetCell->i, targetCell->j, targetCell->k);
+#endif
+#endif
+    iAtom = refCell->iMembers;
+    while(iAtom != NULL) {
+    #ifdef DEBUG
+        stringifyAtom(iAtom, iAtomString);
+    #endif
+        jAtom = targetCell->jMembers;
+        while(jAtom != NULL) {
+            if (jAtom != iAtom) {
+
+            #ifdef DEBUG
+                stringifyAtom(jAtom, jAtomString);
+            #endif
+                if(distance(iAtom, jAtom) < ctc_dist) {
+                    (*nContacts) += updateContactList(iAtom, jAtom);
+                }
+                (*nDist) = (*nDist)+ 1;
+#ifdef DEBUG
+                printf("DUAL [[Dnum %d]] %s [%d %d %d]// %s [%d %d %d] ==> %.2g\n", *nDist, iAtomString, refCell->i, refCell->j, refCell->k, jAtomString, targetCell->i, targetCell->j, targetCell->k, distance(iAtom, jAtom));
+#ifdef AS_PYTHON_EXTENSION
+                PySys_WriteStdout("DUAL [[Dnum %d]] %s [%d %d %d]// %s [%d %d %d] ==> %.2g\n", *nDist, iAtomString, refCell->i, refCell->j, refCell->k, jAtomString, targetCell->i, targetCell->j, targetCell->k, distance(iAtom, jAtom));
+#endif
+#endif
+            }
+            jAtom = jAtom->nextCellAtom;
+        }
+        iAtom = iAtom->nextCellAtom;
+    }
+}
 
 int updateContactList(atom_t *iAtom, atom_t *jAtom){
     if(iAtom->belongsTo == jAtom->belongsTo) return 0;
@@ -472,6 +574,26 @@ double distance(atom_t *iAtom, atom_t *jAtom) {
     return sqrt( (iAtom->x - jAtom->x) * (iAtom->x - jAtom->x) + (iAtom->y - jAtom->y) * (iAtom->y - jAtom->y) + (iAtom->z - jAtom->z) * (iAtom->z - jAtom->z) );
 }
 
+void getBoundariesCartesian_DUAL(atom_t *iAtomList, int iAtom, atom_t *jAtomList, int jAtom, atom_t *minCoor, atom_t *maxCoor) {
+    atom_t iMinCoor;
+    atom_t iMaxCoor;
+    
+    atom_t jMinCoor;
+    atom_t jMaxCoor;
+
+    getBoundariesCartesian(iAtomList, iAtom, &iMinCoor, &iMaxCoor);
+    getBoundariesCartesian(jAtomList, jAtom, &jMinCoor, &jMaxCoor);
+
+    minCoor->x = iMinCoor.x < jMinCoor.x ? iMinCoor.x : jMinCoor.x;
+    minCoor->y = iMinCoor.y < jMinCoor.y ? iMinCoor.y : jMinCoor.y;
+    minCoor->z = iMinCoor.z < jMinCoor.z ? iMinCoor.z : jMinCoor.z;
+    
+    maxCoor->x = iMaxCoor.x > jMaxCoor.x ? iMaxCoor.x : jMaxCoor.x;
+    maxCoor->y = iMaxCoor.y > jMaxCoor.y ? iMaxCoor.y : jMaxCoor.y;
+    maxCoor->z = iMaxCoor.z > jMaxCoor.z ? iMaxCoor.z : jMaxCoor.z;
+
+    
+}
 
 void getBoundariesCartesian(atom_t * atomList, int nAtom, atom_t *minCoor, atom_t *maxCoor) {
 
@@ -525,8 +647,109 @@ void dumpCellContent(cell_t *cell) {
     }
 }
 
-meshContainer_t *createMeshContainer(atom_t *atomList, int nAtom, double step) {
-    //float step = 5.0;
+meshContainer_t *createMeshContainer(atom_t *iAtomList, int iAtom, atom_t *jAtomList, int jAtom, double step) {
+    atom_t minCoor;
+    atom_t maxCoor;
+    bool dualMode = jAtomList != NULL ? true : false;
+    if (dualMode)
+        getBoundariesCartesian_DUAL(iAtomList, iAtom, jAtomList, jAtom, &minCoor, &maxCoor);
+    else
+        getBoundariesCartesian(iAtomList, iAtom, &minCoor, &maxCoor);
+
+#ifdef DEBUG
+    printf("Minimal Coordinates %g %g %g\n", minCoor.x, minCoor.y, minCoor.z);
+    printf("Maximal Coordinates %g %g %g\n", maxCoor.x, maxCoor.y, maxCoor.z);
+
+#ifdef AS_PYTHON_EXTENSION
+    PySys_WriteStdout("Maximal Coordinates %g %g %g\n", maxCoor.x, maxCoor.y, maxCoor.z);
+    PySys_WriteStdout("Minimal Coordinates %g %g %g\n", minCoor.x, minCoor.y, minCoor.z);
+#endif
+#endif
+
+    int iDim = (maxCoor.x - minCoor.x);
+    iDim = (iDim + step - 1) / step + 1;
+    int jDim = (maxCoor.y - minCoor.y);
+    jDim = (jDim + step - 1) / step + 1;
+    int kDim = (maxCoor.z - minCoor.z);
+    kDim = (kDim + step - 1) / step + 1;
+
+    mesh_t *i_mesh = createMesh(iDim, jDim, kDim);
+    cell_t ***grid = i_mesh->grid;
+
+#ifdef DEBUG
+    printf("Projecting ... \n");
+#endif
+    // We store the non-empty cells
+    cell_t **filledCells = malloc(i_mesh->n * sizeof(cell_t*));
+    int nFilled = 0;
+
+    for (int c = 0 ; c < iAtom ; c++) {
+        int i, j, k;
+        cartesianToMesh(&iAtomList[c], &i, &j, &k, step, minCoor);
+        if (grid[i][j][k].memberCount == 0) {
+            /*This cell is non-empty
+            register its adress*/
+            filledCells[nFilled] = &grid[i][j][k];
+            // intialize cell data structure
+            grid[i][j][k].members = &iAtomList[c];
+            grid[i][j][k].iMembers = &iAtomList[c];
+            grid[i][j][k].head = grid[i][j][k].members;
+            nFilled++;
+        } else {
+            grid[i][j][k].head->nextCellAtom = &iAtomList[c];
+            grid[i][j][k].head = grid[i][j][k].head->nextCellAtom;
+        }
+        grid[i][j][k].head->nextCellAtom = NULL;
+        grid[i][j][k].memberCount++;
+        grid[i][j][k].iMemberCount++;
+        iAtomList[c].inCell = &(grid[i][j][k]);
+    }
+
+    if (dualMode) {
+        for (int c = 0 ; c < jAtom ; c++) {
+            int i, j, k;
+            cartesianToMesh(&jAtomList[c], &i, &j, &k, step, minCoor);
+            if (grid[i][j][k].memberCount == 0) {
+                /*This cell is non-empty
+                register its adress*/
+                filledCells[nFilled] = &grid[i][j][k];
+                // intialize cell data structure
+                grid[i][j][k].members = &jAtomList[c];
+                grid[i][j][k].jMembers = &jAtomList[c];
+                grid[i][j][k].head = grid[i][j][k].members;
+                nFilled++;
+            }
+            else if (grid[i][j][k].jMemberCount == 0) { // Already created but not j atom
+                grid[i][j][k].jMembers = &jAtomList[c];
+                grid[i][j][k].head = grid[i][j][k].jMembers;
+
+            } else {
+                grid[i][j][k].head->nextCellAtom = &jAtomList[c];
+                grid[i][j][k].head = grid[i][j][k].head->nextCellAtom;
+            }
+            grid[i][j][k].head->nextCellAtom = NULL;
+            grid[i][j][k].memberCount++;
+            grid[i][j][k].jMemberCount++;
+            jAtomList[c].inCell = &(grid[i][j][k]);
+        }
+    }
+
+#ifdef DEBUG
+    printf("%d atoms projected onto %d cells\n", iAtom + jAtom, nFilled);
+#ifdef AS_PYTHON_EXTENSION
+    PySys_WriteStdout("%d atoms projected onto %d cells\n", iAtom + jAtom, nFilled);
+#endif
+#endif
+    meshContainer_t *results = malloc (sizeof(meshContainer_t));
+    results->mesh = i_mesh;
+    results->filledCells = filledCells;
+    results->nFilled = nFilled;
+    results->step = step;
+
+    return results;
+}
+
+meshContainer_t *createMeshContainer_OLD(atom_t *atomList, int nAtom, double step) {
 
     atom_t minCoor;
     atom_t maxCoor;
@@ -618,7 +841,7 @@ void meshDummy(int a, int b, int c) {
     dum_results->filledCells = dummy_filledCells;
     dum_results->nFilled = dum_mesh->n;
 
-    enumerate(dum_results, -1, NULL);
+    enumerate(dum_results, -1, NULL, false);
 
     destroyMeshContainer(dum_results);
     return;
