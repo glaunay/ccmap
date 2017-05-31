@@ -101,11 +101,56 @@ static int unpackCoordinates(PyObject *pListCoor, double **buffer) {
 }
 
 
+static atom_t *structDictToAtoms(PyObject *pyDictObject, int *nAtoms) {
+    //Return value: Borrowed reference.
+    PyObject* pyObj_x = PyDict_GetItemString(pyDictObject, "x");
+    PyObject* pyObj_y = PyDict_GetItemString(pyDictObject, "y");
+    PyObject* pyObj_z = PyDict_GetItemString(pyDictObject, "z");
+    PyObject* pyObj_chainID = PyDict_GetItemString(pyDictObject, "chainID");
+    PyObject* pyObj_resSeq = PyDict_GetItemString(pyDictObject, "seqRes");
+    PyObject* pyObj_resName = PyDict_GetItemString(pyDictObject, "resName");
+    PyObject* pyObj_atomName = PyDict_GetItemString(pyDictObject, "name");
 
+    Py_ssize_t n = PyList_Size(pyObj_x);
+    *nAtoms = (int) n;
+
+    PySys_WriteStdout("Unpacking a %d atoms structure dictionary\n", *nAtoms);
+
+
+
+    double *coorX, *coorY, *coorZ;
+    unpackCoordinates(pyObj_x, &coorX);
+    unpackCoordinates(pyObj_y, &coorY);
+    unpackCoordinates(pyObj_z, &coorZ);
+    Py_DECREF(pyObj_x);
+    Py_DECREF(pyObj_y);
+    Py_DECREF(pyObj_z);
+
+    char *chainID;
+    unpackChainID(pyObj_chainID, &chainID);
+    Py_DECREF(pyObj_chainID);
+
+    char **resSeq;
+    unpackString(pyObj_resSeq, &resSeq);
+    Py_DECREF(pyObj_resSeq);
+
+    char **resName;
+    unpackString(pyObj_resName, &resName);
+    Py_DECREF(pyObj_resName);
+
+    char **atomName;
+    unpackString(pyObj_atomName, &atomName);
+    Py_DECREF(pyObj_atomName);
+
+    /* Create data structures and compute */
+    atom_t *atomList = readFromArrays(*nAtoms, coorX, coorY, coorZ, chainID, resSeq, resName, atomName);
+
+    return atomList;
+}
 
 
 static PyObject *
-ccmap_compute(PyObject *self, PyObject *args)
+ccmap_compute_ext(PyObject *self, PyObject *args)
 {
     char dummy[] = "XY\0";
 
@@ -115,15 +160,80 @@ the variables whose addresses are passed. It returns false (zero) if an invalid 
 In the latter case it also raises an appropriate exception so the calling function can return NULL immediately (as we saw in the example).
 */
 
-PyObject *pListX, *pListY, *pListZ, *pListChainID, *pListResName;
+PyObject *pyDictList, *pStructAsDict, *pTuple;
 float userThreshold;
-if (!PyArg_ParseTuple(args, "O!O!O!O!O!f", &PyList_Type, &pListX, &PyList_Type, &pListY, &PyList_Type, &pListZ, &PyList_Type, &pListChainID, &PyList_Type, &pListResSeq, &PyList_Type, &pListResName, &PyList_Type, &pListAtomName,&userThreshold)) {
-    PyErr_SetString(PyExc_TypeError, "parameters must be Five and a distance value lists.");
+if (!PyArg_ParseTuple(args, "O!f", &PyList_Type, &pyDictList, &userThreshold)) {
+    PyErr_SetString(PyExc_TypeError, "parameters must be a list of dictionnaries and a distance value.");
+    return NULL;
+}
+    Py_ssize_t nStructPairs = PyList_Size(pyDictList);
+#ifdef DEBUG
+    PySys_WriteStdout("Unpacking %d pairs of structure coordinates [contact distance is %f]\n", (int)nStructPairs, userThreshold);
+#endif
+
+
+    //A list to store results
+
+    /*int PyList_SetItem(PyObject *list, Py_ssize_t index, PyObject *item)
+    Set the item at index index in list to item. Return 0 on success or -1 on failure.
+
+    Note This function “steals” a reference to item and discards a reference to an item already in the list at the affected position.
+    */
+    PyObject *PyList_results =  PyList_New(nStructPairs);
+    PyObject *pStructAsDictRec, *pStructAsDictLig;
+
+    atom_t *atomListRec, *atomListLig;
+    int nAtomsRec, nAtomsLig;
+    for (int i = 0; i < (int)nStructPairs ; i++) {
+        PySys_WriteStdout("____Structure_____ %d\n", i);
+
+        pTuple = PyList_GetItem(pyDictList, i);
+
+        pStructAsDictRec = PyTuple_GetItem(pTuple, 0);
+        pStructAsDictLig = PyTuple_GetItem(pTuple, 1);
+
+        atomListRec = structDictToAtoms(pStructAsDictRec, &nAtomsRec);
+        atomListLig = structDictToAtoms(pStructAsDictLig, &nAtomsLig);
+
+        char *ccmap = residueContactMap_DUAL(atomListRec, nAtomsRec, atomListLig, nAtomsLig, userThreshold);
+        //Py_BuildValue("s", ccmap);
+        PyList_SetItem(PyList_results, i, Py_BuildValue("s", ccmap));
+        PySys_WriteStderr("Destroying\n");
+        destroyAtomList(atomListRec, nAtomsRec);
+        destroyAtomList(atomListLig, nAtomsLig);
+        PySys_WriteStderr("freeing\n");
+        free(ccmap);
+        PySys_WriteStderr("Dereferencing\n");
+        Py_DECREF(pTuple);
+        Py_DECREF(pStructAsDictRec);
+        Py_DECREF(pStructAsDictLig);
+        PySys_WriteStdout("Destroyed safely\n");
+    }
+    PySys_WriteStderr("Going out\n");
+// WE MAY HAVE TO DECREF RESULTS
+    return PyList_results;
+    //return Py_BuildValue("s", dummy);
+}
+
+
+static PyObject *ccmap_compute(PyObject *self, PyObject *args) {
+    char dummy[] = "XY\0";
+
+/*
+PyArg_ParseTuple() returns true (nonzero) if all arguments have the right type and its components have been stored in
+the variables whose addresses are passed. It returns false (zero) if an invalid argument list was passed.
+In the latter case it also raises an appropriate exception so the calling function can return NULL immediately (as we saw in the example).
+*/
+
+PyObject *pListX, *pListY, *pListZ, *pListChainID, *pListResName, *pListResSeq, *pListAtomName;
+float userThreshold;
+if (!PyArg_ParseTuple(args, "O!O!O!O!O!O!O!f", &PyList_Type, &pListX, &PyList_Type, &pListY, &PyList_Type, &pListZ, &PyList_Type, &pListChainID, &PyList_Type, &pListResSeq, &PyList_Type, &pListResName, &PyList_Type, &pListAtomName,&userThreshold)) {
+    PyErr_SetString(PyExc_TypeError, "parameters must be Seven and a distance value lists.");
     return NULL;
 }
     Py_ssize_t n = PyList_Size(pListX);
 #ifdef DEBUG
-    PySys_WriteStdout("Unpacking %d atoms [contact distance is %f]\n", n, userThreshold);
+    PySys_WriteStdout("Unpacking %d atoms [contact distance is %f]\n", (int)n, userThreshold);
 #endif
     /* Unpacking atom specification vectors */
     double *coorX, *coorY, *coorZ;
@@ -147,8 +257,7 @@ if (!PyArg_ParseTuple(args, "O!O!O!O!O!f", &PyList_Type, &pListX, &PyList_Type, 
 
     char *ccmap = residueContactMap(atomList, n, userThreshold);
 
-
-// We may have to copy string in PythonString Object b4 return ?
+    atomList = destroyAtomList(atomList, n);
 
     return Py_BuildValue("s", ccmap);
 }
@@ -190,6 +299,8 @@ static PyMethodDef CcmapMethods[] = {
     //...
     {"compute",  ccmap_compute, METH_VARARGS,
      "Compute a contact map."},
+    {"duals",  ccmap_compute_ext, METH_VARARGS,
+     "Scores interface based on thei contact map."},
     //...
     {NULL, NULL, 0, NULL}        /* Sentinel */
 };
