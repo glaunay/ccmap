@@ -66,9 +66,13 @@ static int unpackString(PyObject *pListOfStrings, char ***buffer) {
         }
         (*buffer)[i][sLen - 2] = '\0';
         Py_DECREF(objectsRepresentation);
+        //PySys_WriteStderr("NO DECFREF");
         //PySys_WriteStdout("translated to --->\"%s\"[%d]\n", (*buffer)[i], sLen - 1);
        // PySys_WriteStdout("translated to --->%s[%d]\n", (*buffer)[i]);
     }
+#ifdef DEBUG
+    PySys_WriteStdout("REF COUNT :: is %d\n", Py_REFCNT(objectsRepresentation) );
+#endif
     return 1;
 }
 
@@ -99,11 +103,16 @@ static int unpackCoordinates(PyObject *pListCoor, double **buffer) {
         PyObject_AsDouble(pItem, &u);
         PyObject_AsDouble(pItem, &(*buffer)[i]);
     }
+    #ifdef DEBUG
+    PySys_WriteStderr("Allocation done\n");
+    #endif
     return 1;
 }
 
 static void freeBuffers(double *x, double *y, double *z, char *chainID, char **resID, char **resName,  char **name, int n) {
+#ifdef DEBUG
     PySys_WriteStdout("Freeing all I buffers of size %d\n", n);
+#endif
     //fprintf(stderr, "Freeing all I buffers of size %d\n", n);
     PyMem_Free(x);
     PyMem_Free(y);
@@ -117,11 +126,17 @@ static void freeBuffers(double *x, double *y, double *z, char *chainID, char **r
     PyMem_Free(resID);
     PyMem_Free(resName);
     PyMem_Free(name);
-    fprintf(stderr, "Done\n", n);
+#ifdef DEBUG
+    PySys_WriteStdout("Done\n");
+#endif
 }
 
 
 static atom_t *structDictToAtoms(PyObject *pyDictObject, int *nAtoms) {
+#ifdef DEBUG
+    PySys_WriteStdout("\n\n=======================\n");
+    PySys_WriteStdout("REF COUNT current Dict :: is %d\n", Py_REFCNT(pyDictObject));
+#endif
     //Return value: Borrowed reference.
     PyObject* pyObj_x = PyDict_GetItemString(pyDictObject, "x");
     PyObject* pyObj_y = PyDict_GetItemString(pyDictObject, "y");
@@ -133,9 +148,9 @@ static atom_t *structDictToAtoms(PyObject *pyDictObject, int *nAtoms) {
 
     Py_ssize_t n = PyList_Size(pyObj_x);
     *nAtoms = (int) n;
-
+#ifdef DEBUG
     PySys_WriteStdout("Unpacking a %d atoms structure dictionary\n", *nAtoms);
-
+#endif
     /*
     All unpackXX calls do memory allocation, which needs subsequent common call to freeBuffer()
     */
@@ -144,35 +159,46 @@ static atom_t *structDictToAtoms(PyObject *pyDictObject, int *nAtoms) {
     unpackCoordinates(pyObj_x, &coorX);
     unpackCoordinates(pyObj_y, &coorY);
     unpackCoordinates(pyObj_z, &coorZ);
+    /* DONT DECREF REFERENCE IS BORROWED !
     Py_DECREF(pyObj_x);
     Py_DECREF(pyObj_y);
     Py_DECREF(pyObj_z);
+    */
 
-    fprintf(stderr, "-->%d %d %d<---\n", Py_REFCNT(pyObj_x), Py_REFCNT(pyObj_y), Py_REFCNT(pyObj_z));
 
     char *chainID;
     unpackChainID(pyObj_chainID, &chainID);
-    Py_DECREF(pyObj_chainID);
+    //Py_DECREF(pyObj_chainID);
 
     char **resSeq;
     unpackString(pyObj_resSeq, &resSeq);
-    Py_DECREF(pyObj_resSeq);
+    //Py_DECREF(pyObj_resSeq);
 
     char **resName;
     unpackString(pyObj_resName, &resName);
-    Py_DECREF(pyObj_resName);
+    //Py_DECREF(pyObj_resName);
 
     char **atomName;
     unpackString(pyObj_atomName, &atomName);
-    Py_DECREF(pyObj_atomName);
+    //Py_DECREF(pyObj_atomName);
 
     /* Create data structures and compute */
     atom_t *atomList = readFromArrays(*nAtoms, coorX, coorY, coorZ, chainID, resSeq, resName, atomName);
 
     freeBuffers(coorX, coorY, coorZ, chainID, resSeq, resName,  atomName, *nAtoms);
 
+#ifdef DEBUG
+    PySys_WriteStdout("REF COUNT X :: is %d\n", Py_REFCNT(pyObj_x) );
+    PySys_WriteStdout("REF COUNT Y :: is %d\n", Py_REFCNT(pyObj_y) );
+    PySys_WriteStdout("REF COUNT Z :: is %d\n", Py_REFCNT(pyObj_z) );
+    PySys_WriteStdout("REF COUNT chainID :: is %d\n", Py_REFCNT(pyObj_chainID) );
+    PySys_WriteStdout("REF COUNT resSeq :: is %d\n", Py_REFCNT(pyObj_resSeq) );
+    PySys_WriteStdout("REF COUNT resName :: is %d\n", Py_REFCNT(pyObj_resName) );
+    PySys_WriteStdout("REF COUNT atomName :: is %d\n", Py_REFCNT(pyObj_atomName) );
 
-
+    PySys_WriteStdout("REF COUNT current Dict :: is %d\n", Py_REFCNT(pyDictObject));
+    PySys_WriteStdout("Returning atomList\n");
+#endif
     return atomList;
 }
 
@@ -214,39 +240,60 @@ if (!PyArg_ParseTuple(args, "O!f", &PyList_Type, &pyDictList, &userThreshold)) {
     int nAtomsRec, nAtomsLig;
     char *ccmap = NULL;
 
-    for (int i = 0; i < (int)nStructPairs ; i++) {
-        PySys_WriteStdout("____Structure_____ %d\n", i);
 
+    //return Py_BuildValue("s", dummy);
+
+
+    for (int i = 0; i < (int)nStructPairs ; i++) {
+#ifdef DEBUG
+        PySys_WriteStdout("____Structure_____ %d\n", i);
+#endif
         pTuple = PyList_GetItem(pyDictList, i);
 
         pStructAsDictRec = PyTuple_GetItem(pTuple, 0);
         pStructAsDictLig = PyTuple_GetItem(pTuple, 1);
-
+#ifdef DEBUG
+        PySys_WriteStdout("REF COUNT pStructAsDictRec :: is %d\nREF COUNT pStructAsDictLig :: is %d\n", Py_REFCNT(pStructAsDictRec), Py_REFCNT(pStructAsDictLig));
+#endif
         atomListRec = structDictToAtoms(pStructAsDictRec, &nAtomsRec);
         atomListLig = structDictToAtoms(pStructAsDictLig, &nAtomsLig);
-
+#ifdef DEBUG
+        PySys_WriteStdout("USED__REF COUNT pStructAsDictRec :: is %d\nUSED__REF COUNT pStructAsDictLig :: is %d\n", Py_REFCNT(pStructAsDictRec), Py_REFCNT(pStructAsDictLig));
+#endif
         ccmap = residueContactMap_DUAL(atomListRec, nAtomsRec, atomListLig, nAtomsLig, userThreshold);
         PyList_SetItem(PyList_results, i, Py_BuildValue("s", ccmap));
 
         //PyList_SetItem(PyList_results, i, Py_BuildValue("s", "TOTOTO"));
-
+#ifdef DEBUG
         PySys_WriteStderr("Destroying Atoms lists\n");
-
+#endif
         destroyAtomList(atomListRec, nAtomsRec);
         destroyAtomList(atomListLig, nAtomsLig);
-        PySys_WriteStdout("Freeing json C pointer safely\n");
-        free(ccmap);
 
-        // Commenting these, as they are borrowed references
-        //  PySys_WriteStderr("Dereferencing PYTHON\n");
-        //Py_DECREF(pTuple);
-        //Py_DECREF(pStructAsDictRec);
-        //Py_DECREF(pStructAsDictLig);
+#ifdef DEBUG
+        PySys_WriteStdout("ATOM_DESTROYED__REF COUNT pStructAsDictRec :: is %d\nATOM_DESTROYED__REF COUNT pStructAsDictLig :: is %d\n", Py_REFCNT(pStructAsDictRec), Py_REFCNT(pStructAsDictLig));
+        PySys_WriteStdout("Freeing json C pointer safely\n");
+#endif
+        free(ccmap);
+#ifdef DEBUG
+        PySys_WriteStdout("CCMAP_AND_ATOM_DESTROYED__REF COUNT pStructAsDictRec :: is %d\nCCMAP_AND_ATOM_DESTROYED__REF COUNT pStructAsDictLig :: is %d\n", Py_REFCNT(pStructAsDictRec), Py_REFCNT(pStructAsDictLig));
+#endif
+
+        // HACK -- makes program work //
+        // Delalocation of the passed arguments makes
+        // decrements the pStructAsDict??? refernces count
+        Py_INCREF(pStructAsDictRec);
+        Py_INCREF(pStructAsDictLig);
     }
+#ifdef DEBUG
     PySys_WriteStderr("Going out\n");
-// WE MAY HAVE TO DECREF RESULTS
-    return PyList_results;
-    //return Py_BuildValue("s", dummy);
+    PySys_WriteStdout("REF COUNT results  :: is %d\n", Py_REFCNT(PyList_results) );
+    PySys_WriteStdout("REF COUNT pDict  :: is %d\n", Py_REFCNT(pyDictList) );
+    PySys_WriteStdout("REF COUNT pDictRec :: is %d\n", Py_REFCNT(pStructAsDictRec) );
+    PySys_WriteStdout("REF COUNT pDictLig  :: is %d\n", Py_REFCNT(pStructAsDictLig) );
+#endif
+   return PyList_results;
+   // return Py_BuildValue("s", dummy);
 }
 
 
@@ -308,6 +355,7 @@ int PyObject_AsDouble(PyObject *py_obj, double *x)
   *x = PyFloat_AsDouble(py_float);
 
   Py_DECREF(py_float);
+  //PySys_WriteStdout("REF COUNT results  :: is %d\n", Py_REFCNT(py_float) ); # IT IS STILL 1
   return 0;
 }
 
