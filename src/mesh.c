@@ -111,9 +111,9 @@ char *residueContactMap_DUAL(atom_t *iAtomList, int iAtom, atom_t *jAtomList, in
 
     double step = ctc_dist;
     meshContainer_t *results = createMeshContainer(iAtomList, iAtom, jAtomList, jAtom, step);
-    
+
     //meshContainer_t *results = createMeshContainer(atomList, nAtom, step);
-    
+
     //RESUME HERE
 
     int nPairs;
@@ -387,7 +387,9 @@ mesh_t *createMesh(int iDim, int jDim, int kDim) {
             }
         }
     }
+#ifdef DEBUG
     printf("Mesh created\n");
+#endif
     return i_mesh;
 }
 
@@ -415,7 +417,7 @@ void enumerate(meshContainer_t *meshContainer, double ctc_dist, int *nPairs, boo
 
     if (dualBool)
         pCellEnumerator = &pairwiseCellEnumerate_DUAL;
-    else 
+    else
         pCellEnumerator = &pairwiseCellEnumerate;
 
     cell_t ***grid = mesh->grid;
@@ -433,7 +435,7 @@ void enumerate(meshContainer_t *meshContainer, double ctc_dist, int *nPairs, boo
 #ifdef DEBUG
         printf("Neighbours of cell %d (%d %d %d)\n", cur_cell->n, cur_cell->i, cur_cell->j, cur_cell->k);
 #ifdef AS_PYTHON_EXTENSION
-        PySys_WriteStderr("Neighbours of cell %d (%d %d %d)\n", cur_cell->n, cur_cell->i, cur_cell->j, cur_cell->k);
+     //   PySys_WriteStderr("Neighbours of cell %d (%d %d %d)\n", cur_cell->n, cur_cell->i, cur_cell->j, cur_cell->k);
 #endif
 #endif
         // List Neighbouring cells and enumerate the pairwise atomic distances
@@ -577,7 +579,7 @@ double distance(atom_t *iAtom, atom_t *jAtom) {
 void getBoundariesCartesian_DUAL(atom_t *iAtomList, int iAtom, atom_t *jAtomList, int jAtom, atom_t *minCoor, atom_t *maxCoor) {
     atom_t iMinCoor;
     atom_t iMaxCoor;
-    
+
     atom_t jMinCoor;
     atom_t jMaxCoor;
 
@@ -587,12 +589,12 @@ void getBoundariesCartesian_DUAL(atom_t *iAtomList, int iAtom, atom_t *jAtomList
     minCoor->x = iMinCoor.x < jMinCoor.x ? iMinCoor.x : jMinCoor.x;
     minCoor->y = iMinCoor.y < jMinCoor.y ? iMinCoor.y : jMinCoor.y;
     minCoor->z = iMinCoor.z < jMinCoor.z ? iMinCoor.z : jMinCoor.z;
-    
+
     maxCoor->x = iMaxCoor.x > jMaxCoor.x ? iMaxCoor.x : jMaxCoor.x;
     maxCoor->y = iMaxCoor.y > jMaxCoor.y ? iMaxCoor.y : jMaxCoor.y;
     maxCoor->z = iMaxCoor.z > jMaxCoor.z ? iMaxCoor.z : jMaxCoor.z;
 
-    
+
 }
 
 void getBoundariesCartesian(atom_t * atomList, int nAtom, atom_t *minCoor, atom_t *maxCoor) {
@@ -893,7 +895,7 @@ atom_t *destroyAtomList(atom_t *atomList, int nAtom) {
     free(atomList); // Destroy the array
 
 #ifdef DEBUG
-    printf("Ok\n");
+    printf("All %d atoms list destroyed\n", nAtom);
 #endif
     return NULL;
 }

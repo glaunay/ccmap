@@ -2,9 +2,10 @@
 #include <stdlib.h>
 #include "mesh.h"
 #include "mesh_io.h"
-//#include "python_logging.h"
+
+
 /*
-    Python C-API, pure-C mesh implementation interface
+    Python C-API, pure-C  implementation interface
 */
 
 static int unpackChainID(PyObject *pListChainID, char **buffer) {
@@ -56,7 +57,7 @@ static int unpackString(PyObject *pListOfStrings, char ***buffer) {
     for (i = 0; i < n ; i++) {
         pItem = PyList_GetItem(pListOfStrings, i);
         objectsRepresentation = PyObject_Repr(pItem);
-        s = PyString_AsString(objectsRepresentation);
+        s = PyString_AsString(objectsRepresentation); // DOC says it must not be de allocated
         sLen =  strlen(s); // This corresponds to the actual string surrounded by \' , ie : 'MYTSRING'
         //PySys_WriteStdout("--->%s[%d]\n", s, strlen(s));
         (*buffer)[i] = PyMem_New(char, sLen - 1);
@@ -64,6 +65,7 @@ static int unpackString(PyObject *pListOfStrings, char ***buffer) {
             (*buffer)[i][j - 1] = s[j];
         }
         (*buffer)[i][sLen - 2] = '\0';
+        Py_DECREF(objectsRepresentation);
         //PySys_WriteStdout("translated to --->\"%s\"[%d]\n", (*buffer)[i], sLen - 1);
        // PySys_WriteStdout("translated to --->%s[%d]\n", (*buffer)[i]);
     }
@@ -81,7 +83,7 @@ static int unpackCoordinates(PyObject *pListCoor, double **buffer) {
     int i;
     n = PyList_Size(pListCoor);
 #ifdef DEBUG
-    PySys_WriteStdout("Allocating for %d coordinates\n", n);
+    PySys_WriteStdout("Allocating for %d coordinates\n", (int)n);
 #endif
     *buffer = PyMem_New(double, n);
 
@@ -100,6 +102,24 @@ static int unpackCoordinates(PyObject *pListCoor, double **buffer) {
     return 1;
 }
 
+static void freeBuffers(double *x, double *y, double *z, char *chainID, char **resID, char **resName,  char **name, int n) {
+    PySys_WriteStdout("Freeing all I buffers of size %d\n", n);
+    //fprintf(stderr, "Freeing all I buffers of size %d\n", n);
+    PyMem_Free(x);
+    PyMem_Free(y);
+    PyMem_Free(z);
+    PyMem_Free(chainID);
+    for (int i = 0; i < n ; i++) {
+        PyMem_Free(resID[i]);
+        PyMem_Free(resName[i]);
+        PyMem_Free(name[i]);
+    }
+    PyMem_Free(resID);
+    PyMem_Free(resName);
+    PyMem_Free(name);
+    fprintf(stderr, "Done\n", n);
+}
+
 
 static atom_t *structDictToAtoms(PyObject *pyDictObject, int *nAtoms) {
     //Return value: Borrowed reference.
@@ -116,7 +136,9 @@ static atom_t *structDictToAtoms(PyObject *pyDictObject, int *nAtoms) {
 
     PySys_WriteStdout("Unpacking a %d atoms structure dictionary\n", *nAtoms);
 
-
+    /*
+    All unpackXX calls do memory allocation, which needs subsequent common call to freeBuffer()
+    */
 
     double *coorX, *coorY, *coorZ;
     unpackCoordinates(pyObj_x, &coorX);
@@ -125,6 +147,8 @@ static atom_t *structDictToAtoms(PyObject *pyDictObject, int *nAtoms) {
     Py_DECREF(pyObj_x);
     Py_DECREF(pyObj_y);
     Py_DECREF(pyObj_z);
+
+    fprintf(stderr, "-->%d %d %d<---\n", Py_REFCNT(pyObj_x), Py_REFCNT(pyObj_y), Py_REFCNT(pyObj_z));
 
     char *chainID;
     unpackChainID(pyObj_chainID, &chainID);
@@ -145,6 +169,10 @@ static atom_t *structDictToAtoms(PyObject *pyDictObject, int *nAtoms) {
     /* Create data structures and compute */
     atom_t *atomList = readFromArrays(*nAtoms, coorX, coorY, coorZ, chainID, resSeq, resName, atomName);
 
+    freeBuffers(coorX, coorY, coorZ, chainID, resSeq, resName,  atomName, *nAtoms);
+
+
+
     return atomList;
 }
 
@@ -160,7 +188,7 @@ the variables whose addresses are passed. It returns false (zero) if an invalid 
 In the latter case it also raises an appropriate exception so the calling function can return NULL immediately (as we saw in the example).
 */
 
-PyObject *pyDictList, *pStructAsDict, *pTuple;
+PyObject *pyDictList, *pTuple;
 float userThreshold;
 if (!PyArg_ParseTuple(args, "O!f", &PyList_Type, &pyDictList, &userThreshold)) {
     PyErr_SetString(PyExc_TypeError, "parameters must be a list of dictionnaries and a distance value.");
@@ -184,6 +212,8 @@ if (!PyArg_ParseTuple(args, "O!f", &PyList_Type, &pyDictList, &userThreshold)) {
 
     atom_t *atomListRec, *atomListLig;
     int nAtomsRec, nAtomsLig;
+    char *ccmap = NULL;
+
     for (int i = 0; i < (int)nStructPairs ; i++) {
         PySys_WriteStdout("____Structure_____ %d\n", i);
 
@@ -195,19 +225,23 @@ if (!PyArg_ParseTuple(args, "O!f", &PyList_Type, &pyDictList, &userThreshold)) {
         atomListRec = structDictToAtoms(pStructAsDictRec, &nAtomsRec);
         atomListLig = structDictToAtoms(pStructAsDictLig, &nAtomsLig);
 
-        char *ccmap = residueContactMap_DUAL(atomListRec, nAtomsRec, atomListLig, nAtomsLig, userThreshold);
-        //Py_BuildValue("s", ccmap);
+        ccmap = residueContactMap_DUAL(atomListRec, nAtomsRec, atomListLig, nAtomsLig, userThreshold);
         PyList_SetItem(PyList_results, i, Py_BuildValue("s", ccmap));
-        PySys_WriteStderr("Destroying\n");
+
+        //PyList_SetItem(PyList_results, i, Py_BuildValue("s", "TOTOTO"));
+
+        PySys_WriteStderr("Destroying Atoms lists\n");
+
         destroyAtomList(atomListRec, nAtomsRec);
         destroyAtomList(atomListLig, nAtomsLig);
-        PySys_WriteStderr("freeing\n");
+        PySys_WriteStdout("Freeing json C pointer safely\n");
         free(ccmap);
-        PySys_WriteStderr("Dereferencing\n");
-        Py_DECREF(pTuple);
-        Py_DECREF(pStructAsDictRec);
-        Py_DECREF(pStructAsDictLig);
-        PySys_WriteStdout("Destroyed safely\n");
+
+        // Commenting these, as they are borrowed references
+        //  PySys_WriteStderr("Dereferencing PYTHON\n");
+        //Py_DECREF(pTuple);
+        //Py_DECREF(pStructAsDictRec);
+        //Py_DECREF(pStructAsDictLig);
     }
     PySys_WriteStderr("Going out\n");
 // WE MAY HAVE TO DECREF RESULTS
@@ -276,6 +310,7 @@ int PyObject_AsDouble(PyObject *py_obj, double *x)
   Py_DECREF(py_float);
   return 0;
 }
+
 
 int PyList_IntoDoubleArray(PyObject *py_list, double *x, int size) {
     int i;
