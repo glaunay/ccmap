@@ -4,8 +4,8 @@ module1 = Extension('ccmap',
                     libraries = ['m'],
                     include_dirs = ['./include'],
                     sources = ['ccmapmodule.c', './src/mesh.c'],
-                    #extra_compile_args=['-D', 'AS_PYTHON_EXTENSION', '-std=c99', '-pedantic'])
-                    extra_compile_args=['-D', 'DEBUG', '-D', 'AS_PYTHON_EXTENSION', '-std=c99', '-pedantic'])
+                    extra_compile_args=['-D', 'AS_PYTHON_EXTENSION', '-std=c99', '-pedantic'])
+                    #extra_compile_args=['-D', 'DEBUG', '-D', 'AS_PYTHON_EXTENSION', '-std=c99', '-pedantic'])
 
 setup (name = 'ccmapModule',
        version = '1.0',
