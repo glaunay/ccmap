@@ -536,7 +536,7 @@ void pairwiseCellEnumerate_DUAL(cell_t *refCell, cell_t *targetCell, double ctc_
                 stringifyAtom(jAtom, jAtomString);
             #endif
                 if(distance(iAtom, jAtom) < ctc_dist) {
-                    (*nContacts) += updateContactList(iAtom, jAtom);
+                    (*nContacts) += updateContactList_DUAL(iAtom, jAtom);
                 }
                 (*nDist) = (*nDist)+ 1;
 #ifdef DEBUG
@@ -557,6 +557,26 @@ int updateContactList(atom_t *iAtom, atom_t *jAtom){
 
     residue_t *iResidue = iAtom->belongsTo->index < jAtom->belongsTo->index ? iAtom->belongsTo : jAtom->belongsTo;
     residue_t *jResidue = iAtom->belongsTo->index < jAtom->belongsTo->index ? jAtom->belongsTo : iAtom->belongsTo;
+
+    for (int i = 0; i < iResidue->nContacts; i++) {
+        if(iResidue->contactResidueList[i] == jResidue) {
+          //  printf("Contact already knwow between residues indexed %d,%d\n", iResidue->index, jResidue->index);
+            return 0;
+        }
+    }
+    //printf("ADDING a new contact between residues indexed %d,%d\n", iResidue->index, jResidue->index);
+    iResidue->nContacts++;
+    iResidue->contactResidueList = realloc( iResidue->contactResidueList, iResidue->nContacts * sizeof(residue_t*) );
+    iResidue->contactResidueList[iResidue->nContacts - 1] = jResidue;
+    return 1;
+}
+
+
+int updateContactList_DUAL(atom_t *iAtom, atom_t *jAtom){
+    if(iAtom->belongsTo == jAtom->belongsTo) return 0;
+
+    residue_t *iResidue = iAtom->belongsTo;
+    residue_t *jResidue = jAtom->belongsTo;
 
     for (int i = 0; i < iResidue->nContacts; i++) {
         if(iResidue->contactResidueList[i] == jResidue) {
