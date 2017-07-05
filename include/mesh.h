@@ -108,6 +108,7 @@ atom_t *destroyAtomList(atom_t *atomList, int nAtom);
 atom_t *destroyAtom(atom_t *atom);
 
 int updateContactList(atom_t *iAtom, atom_t *jAtom);
+int updateContactList_DUAL(atom_t *iAtom, atom_t *jAtom);
 
 mesh_t *createMesh(int iDim, int jDim, int kDim);
 meshContainer_t *destroyMeshContainer(meshContainer_t *container);

@@ -6,6 +6,7 @@
 #include <math.h>
 #include "mesh.h"
 #include <unistd.h>
+#include "pdb_coordinates.h"
 
 //#include <stddef.h>
 //atom_t *readCoordinates(char *fname, int *_nAtom);
@@ -87,6 +88,41 @@ void freeBuffers(double *x, double *y, double *z, char *chainID, char **resID, c
     free(name);
 }
 
+// We dont add iCode here, see wheter it is added to resSeq ou resName
+
+int readPdbFile(char *fname, double **x, double **y, double **z, char **chainID, char ***resID, char ***resName,  char ***name) {
+    pdbCoordinateContainer_t *pdbCoordinateContainer = pdbFileToContainer(fname);
+
+    int n = pdbCoordinateContainer->atomCount;
+
+    *x = malloc(n * sizeof(double));
+    *y = malloc(n * sizeof(double));
+    *z = malloc(n * sizeof(double));
+    *chainID = malloc(n * sizeof(char));
+    *resID = malloc(n * sizeof(char*));
+    *resName = malloc(n * sizeof(char*));
+    *name = malloc(n * sizeof(char*));
+    for (int i = 0 ; i < n ; i++) {
+
+        (*chainID)[i] = pdbCoordinateContainer->atomRecordArray[i].chainID;
+        (*x)[i] = pdbCoordinateContainer->atomRecordArray[i].x;
+        (*y)[i] = pdbCoordinateContainer->atomRecordArray[i].y;
+        (*z)[i] = pdbCoordinateContainer->atomRecordArray[i].z;
+        (*resID)[i] = malloc((strlen(pdbCoordinateContainer->atomRecordArray[i].resSeq) + 1) * sizeof(char));
+        strcpy((*resID)[i], pdbCoordinateContainer->atomRecordArray[i].resSeq);
+        (*resName)[i] = malloc((strlen(pdbCoordinateContainer->atomRecordArray[i].resName) + 1) * sizeof(char));
+        strcpy((*resName)[i], pdbCoordinateContainer->atomRecordArray[i].resName);
+        (*name)[i] = malloc((strlen(pdbCoordinateContainer->atomRecordArray[i].name) + 1) * sizeof(char));
+        strcpy((*name)[i], pdbCoordinateContainer->atomRecordArray[i].name);
+    }
+
+    destroyPdbCoordinateContainer(pdbCoordinateContainer);
+
+    return n;
+}
+
+
+
 int readFile(char *fname, double **x, double **y, double **z, char **chainID, char ***resID, char ***resName,  char ***name) {
     double xBuffer[20000];
     double yBuffer[20000];
@@ -148,7 +184,7 @@ int readFile(char *fname, double **x, double **y, double **z, char **chainID, ch
 }
 
 
-void runSingle(char *fname, float dist) {
+void runSingle( char *fname, float dist, int (*readerFunc)(char*, double**, double**, double**, char**, char***, char***, char***) ) {
     /*  ONE SET OF COORDINATES  */
     double *x;
     double *y;
@@ -161,7 +197,7 @@ void runSingle(char *fname, float dist) {
     int nAtom = 0;
 
     printf("Reading coordinates from %s\n", fname);
-    nAtom = readFile(fname, &x, &y, &z, &chainID, &resSeq, &resName, &atomName);
+    nAtom = (*readerFunc)(fname, &x, &y, &z, &chainID, &resSeq, &resName, &atomName);
     atomList = readFromArrays(nAtom, x, y, z, chainID, resSeq, resName, atomName);
     char *ccmap = residueContactMap(atomList, nAtom, dist);
 
@@ -172,7 +208,7 @@ void runSingle(char *fname, float dist) {
     free(ccmap);
 }
 
-void runDual(char *iFname, char *jFname, float dist) {
+void runDual( char *iFname, char *jFname, float dist, int (*readerFunc)(char*, double**, double**, double**, char**, char***, char***, char***) ) {
     /*  ONE SET OF COORDINATES  */
     double *x;
     double *y;
@@ -184,7 +220,7 @@ void runDual(char *iFname, char *jFname, float dist) {
     atom_t *atomList = NULL;
     int nAtom = 0;
     printf("Reading coordinates from %s\n", iFname);
-    nAtom = readFile(iFname, &x, &y, &z, &chainID, &resSeq, &resName, &atomName);
+    nAtom = (*readerFunc)(iFname, &x, &y, &z, &chainID, &resSeq, &resName, &atomName);
     atomList = readFromArrays(nAtom, x, y, z, chainID, resSeq, resName, atomName);
 
     /*  OPTIONAL SECOND SET OF COORDINATES  */
@@ -197,7 +233,7 @@ void runDual(char *iFname, char *jFname, float dist) {
     char **atomName_other;
     atom_t *atomList_other = NULL;
     int nAtom_other = 0;
-    nAtom_other = readFile(jFname, &x_other, &y_other, &z_other, &chainID_other, &resSeq_other, &resName_other, &atomName_other);
+    nAtom_other = (*readerFunc)(jFname, &x_other, &y_other, &z_other, &chainID_other, &resSeq_other, &resName_other, &atomName_other);
     atomList_other = readFromArrays(nAtom_other, x_other, y_other, z_other, chainID_other, resSeq_other, resName_other, atomName_other);
 
     char *ccmap = residueContactMap_DUAL(atomList, nAtom, atomList_other, nAtom_other, dist);
@@ -222,14 +258,28 @@ int main (int argc, char *argv[]) {
     int c;
     char *iFile = NULL;
     char *jFile = NULL;
+    char *pdbFile = NULL;
+
     extern char *optarg;
     extern int optind, optopt, opterr;
     int errflg = 0;
     char *optDist = NULL;
-    while ((c = getopt(argc, argv, "a:b:d:")) != -1) {
+//int readFile(char *fname, double **x, double **y, double **z, char **chainID, char ***resID, char ***resName,  char ***name) {
+
+
+    int (*readerFunc)(char*, double**, double**, double**, char**, char***, char***, char***) = NULL;
+    while ((c = getopt(argc, argv, "a:b:d:p:q:")) != -1) {
         switch(c) {
+            case 'p':
+                iFile = optarg;
+                readerFunc = &readPdbFile;
+                break;
+            case 'q':
+                jFile = optarg;
+                break;
             case 'a':
                 iFile = optarg;
+                readerFunc = &readFile;
                 break;
             case 'b':
                 jFile = optarg;
@@ -248,16 +298,18 @@ int main (int argc, char *argv[]) {
             errflg++;
         }
     }
-    if (errflg || optDist == NULL || iFile == NULL) {
+
+    if ( errflg || optDist == NULL || iFile == NULL) {
         fprintf(stderr, "usage: . . . ");
         exit(2);
     }
+
     double step = atof(optDist);
 
     if(jFile == NULL)
-        runSingle(iFile, step);
+        runSingle(iFile, step, readerFunc);
     else
-        runDual(iFile, jFile, step);
+        runDual(iFile, jFile, step, readerFunc);
 
     exit(1);
 

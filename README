@@ -2,3 +2,4 @@ rm -rf build;python setup.py build && python setup.py install
 rm -rf build;/software/mobi/pythonC_dvl/0.1/Python-2.7.13/valgrind/python setup.py build && /software/mobi/pythonC_dvl/0.1/Python-2.7.13/valgrind/python  setup.py install
 gcc -Wall -lm -I../include/ -o mesh.exe mesh.c main.c -std=c99
 gcc -Wall -lm -I../include/ -o mesh.exe mesh.c main.c -std=c99 -D DEBUG -pedantic
+gcc -Wall -lm -I../include/ -o pdbReader.exe mesh.c pdb_coordinates.c main.c -std=c99
