@@ -97,6 +97,26 @@ char *residueContactMap(atom_t * atomList, int nAtom, double ctc_dist) {
     results = destroyMeshContainer(results);
     return jsonString;
 }
+// Debugging function to list the cell coordinates of a specified residues projected atoms
+static void printResidueCellProjection(char *resID, char chainID, meshContainer_t *meshContainer, residue_t *residueList) {
+    char atomString[81];
+
+    residue_t *residuePtr = residueList;
+    atom_t *atomPtr = NULL;
+    while(residuePtr != NULL) {
+        if( (strcmp(resID, residuePtr->resID) == 0) && residuePtr->chainID == chainID ) {
+            printf("CellProj:: \"%s\" \"%c\"\n", residuePtr->resID, residuePtr->chainID);
+            atomPtr = residuePtr->elements;
+            while(atomPtr != NULL) {
+                stringifyAtom(atomPtr, atomString);
+                printf("CellProj:: %s [%d, %d, %d]\n", atomString, atomPtr->inCell->i, atomPtr->inCell->j, atomPtr->inCell->k);
+                atomPtr = atomPtr->nextResidueAtom;
+            }
+        }
+        residuePtr = residuePtr->nextResidueList;
+    }
+}
+
 
 char *residueContactMap_DUAL(atom_t *iAtomList, int iAtom, atom_t *jAtomList, int jAtom, double ctc_dist) {
     residue_t *iResidueList = createResidueList(iAtomList);
@@ -112,9 +132,10 @@ char *residueContactMap_DUAL(atom_t *iAtomList, int iAtom, atom_t *jAtomList, in
     double step = ctc_dist;
     meshContainer_t *results = createMeshContainer(iAtomList, iAtom, jAtomList, jAtom, step);
 
-    //meshContainer_t *results = createMeshContainer(atomList, nAtom, step);
-
-    //RESUME HERE
+    /* Inspecting atom preojection */
+    // 101_B_CE1 and 121_1_OE1 cell coordinates ?
+    printResidueCellProjection(" 101", 'B', results, iResidueList);
+    printResidueCellProjection(" 121", 'A', results, jResidueList);
 
     int nPairs;
     enumerate(results, ctc_dist, &nPairs, true);
@@ -483,6 +504,7 @@ void pairwiseCellEnumerate(cell_t *refCell, cell_t *targetCell, double ctc_dist,
 #endif
     iAtom = refCell->members;
     while(iAtom != NULL) {
+
     #ifdef DEBUG
         stringifyAtom(iAtom, iAtomString);
     #endif
@@ -523,15 +545,17 @@ void pairwiseCellEnumerate_DUAL(cell_t *refCell, cell_t *targetCell, double ctc_
     PySys_WriteStdout("DUAL Pairwise cell atom enumeration: [%d %d %d]// [%d %d %d]\n", refCell->i, refCell->j, refCell->k, targetCell->i, targetCell->j, targetCell->k);
 #endif
 #endif
+
+
     iAtom = refCell->iMembers;
     while(iAtom != NULL) {
+
     #ifdef DEBUG
         stringifyAtom(iAtom, iAtomString);
     #endif
         jAtom = targetCell->jMembers;
         while(jAtom != NULL) {
             if (jAtom != iAtom) {
-
             #ifdef DEBUG
                 stringifyAtom(jAtom, jAtomString);
             #endif
@@ -550,6 +574,35 @@ void pairwiseCellEnumerate_DUAL(cell_t *refCell, cell_t *targetCell, double ctc_
         }
         iAtom = iAtom->nextCellAtom;
     }
+// Reverse i/j members lookup
+    iAtom = refCell->jMembers;
+    while(iAtom != NULL) {
+
+    #ifdef DEBUG
+        stringifyAtom(iAtom, iAtomString);
+    #endif
+        jAtom = targetCell->iMembers;
+        while(jAtom != NULL) {
+            if (jAtom != iAtom) {
+            #ifdef DEBUG
+                stringifyAtom(jAtom, jAtomString);
+            #endif
+                if(distance(iAtom, jAtom) < ctc_dist) {
+                    (*nContacts) += updateContactList_DUAL(iAtom, jAtom);
+                }
+                (*nDist) = (*nDist)+ 1;
+#ifdef DEBUG
+                printf("DUAL [[Dnum %d]] %s [%d %d %d]// %s [%d %d %d] ==> %.2g\n", *nDist, iAtomString, refCell->i, refCell->j, refCell->k, jAtomString, targetCell->i, targetCell->j, targetCell->k, distance(iAtom, jAtom));
+#ifdef AS_PYTHON_EXTENSION
+                PySys_WriteStdout("DUAL [[Dnum %d]] %s [%d %d %d]// %s [%d %d %d] ==> %.2g\n", *nDist, iAtomString, refCell->i, refCell->j, refCell->k, jAtomString, targetCell->i, targetCell->j, targetCell->k, distance(iAtom, jAtom));
+#endif
+#endif
+            }
+            jAtom = jAtom->nextCellAtom;
+        }
+        iAtom = iAtom->nextCellAtom;
+    }
+
 }
 
 int updateContactList(atom_t *iAtom, atom_t *jAtom){
