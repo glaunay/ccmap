@@ -588,7 +588,9 @@ void pairwiseCellEnumerate_DUAL(cell_t *refCell, cell_t *targetCell, double ctc_
                 stringifyAtom(jAtom, jAtomString);
             #endif
                 if(distance(iAtom, jAtom) < ctc_dist) {
-                    (*nContacts) += updateContactList_DUAL(iAtom, jAtom);
+		  //(*nContacts) += updateContactList_DUAL(iAtom, jAtom);
+		  // Reverse again for the contactList, to always have root residues from the receptor
+		    (*nContacts) += updateContactList_DUAL(jAtom, iAtom);
                 }
                 (*nDist) = (*nDist)+ 1;
 #ifdef DEBUG
