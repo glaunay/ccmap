@@ -134,8 +134,8 @@ char *residueContactMap_DUAL(atom_t *iAtomList, int iAtom, atom_t *jAtomList, in
 
     /* Inspecting atom preojection */
     // 101_B_CE1 and 121_1_OE1 cell coordinates ?
-    printResidueCellProjection(" 101", 'B', results, iResidueList);
-    printResidueCellProjection(" 121", 'A', results, jResidueList);
+    // printResidueCellProjection(" 101", 'B', results, iResidueList);
+    //printResidueCellProjection(" 121", 'A', results, jResidueList);
 
     int nPairs;
     enumerate(results, ctc_dist, &nPairs, true);
