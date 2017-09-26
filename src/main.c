@@ -183,7 +183,7 @@ int readFile(char *fname, double **x, double **y, double **z, char **chainID, ch
     return n;
 }
 
-
+// PASS Transflag and rotate on the fly
 void runSingle( char *fname, float dist, int (*readerFunc)(char*, double**, double**, double**, char**, char***, char***, char***) ) {
     /*  ONE SET OF COORDINATES  */
     double *x;
@@ -248,6 +248,37 @@ void runDual( char *iFname, char *jFname, float dist, int (*readerFunc)(char*, d
     free(ccmap);
 }
 
+void parseTransform(char *eulerString, char *translateString, float (*eulers)[3], float (*translate)[3]){
+    fprintf(stderr, "Coucou\n%s\n", eulerString);
+    fprintf(stderr, "-->%f\n", (*eulers)[0]);
+
+    char *err, *p = eulerString;
+    float val;
+    int i = 0;
+    while (*p) {
+        val = strtod(p, &err);
+        if (p == err) p++;
+        else if ((err == NULL) || (*err == 0)) {
+            (*eulers)[i] = val;
+            i++;
+            printf("Value: %f\n", val); break;
+        }
+        else {
+            printf("errValue: %f\n", val);
+            p = err + 1;
+            (*eulers)[i] = val;
+            i++;
+        }
+    }
+/*
+    if(eulerString != NULL)
+        scanf(eulerString, "%g,%g,%g", &(eulers[0]), &(eulers[1]), &(eulers[2]);
+    fprintf(stderr, "Coucou2\n");
+    if(translateString != NULL)
+        scanf(eulerString, "%g,%g,%g", (*translate)[0], (*translate)[1], (*translate)[2]);
+*/
+}
+
 
 int main (int argc, char *argv[]) {
 
@@ -259,17 +290,28 @@ int main (int argc, char *argv[]) {
     char *iFile = NULL;
     char *jFile = NULL;
     char *pdbFile = NULL;
-
+    char *euler = NULL;
+    char *translate = NULL;
     extern char *optarg;
     extern int optind, optopt, opterr;
     int errflg = 0;
+    int transflg = 0;
     char *optDist = NULL;
+    float eulerAngle[3]  = { 0.0, 0.0, 0.0 };
+    float translation[3] = { 0.0, 0.0, 0.0 };
+
 //int readFile(char *fname, double **x, double **y, double **z, char **chainID, char ***resID, char ***resName,  char ***name) {
 
 
     int (*readerFunc)(char*, double**, double**, double**, char**, char***, char***, char***) = NULL;
-    while ((c = getopt(argc, argv, "a:b:d:p:q:")) != -1) {
+    while ((c = getopt(argc, argv, "a:b:d:p:q:e:")) != -1) {
         switch(c) {
+             case 't':
+                translate = optarg;
+                break;
+             case 'e':
+                euler = optarg;
+                break;
             case 'p':
                 iFile = optarg;
                 readerFunc = &readPdbFile;
@@ -297,6 +339,13 @@ int main (int argc, char *argv[]) {
                             "Unrecognized option: -%c\n", optopt);
             errflg++;
         }
+    }
+
+
+    if (translate != NULL || euler != NULL) {
+        transflg++;
+        parseTransform(euler, translate, &eulerAngle, &translation);
+        printf("%f %f %f , %f %f %f\n", eulerAngle[0], eulerAngle[1], eulerAngle[2], translation[0], translation[1],translation[2]);
     }
 
     if ( errflg || optDist == NULL || iFile == NULL) {

@@ -202,6 +202,22 @@ static atom_t *structDictToAtoms(PyObject *pyDictObject, int *nAtoms) {
     return atomList;
 }
 
+/*
+static PyObject *
+ccmap_compute_zdock_serie(PyObject *self, PyObject *args) {
+    PyObject *pyDictList, *pTuple;
+    float userThreshold;
+    if (!PyArg_ParseTuple(args, "O!f", &PyList_Type, &pyDictList, &userThreshold)) {
+        PyErr_SetString(PyExc_TypeError, "parameters must be a list of dictionnaries and a distance value.");
+        return NULL;
+    }
+    Py_ssize_t nStructPairs = PyList_Size(pyDictList);
+#ifdef DEBUG
+    PySys_WriteStdout("Unpacking %d rotation matrices [contact distance is %f]\n", (int)nRotMatrix, userThreshold);
+#endif
+
+}
+*/
 
 static PyObject *
 ccmap_compute_ext(PyObject *self, PyObject *args)
