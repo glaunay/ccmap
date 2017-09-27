@@ -251,6 +251,45 @@ void runDual( char *iFname, char *jFname, float dist,
     free(ccmap);
 }
 
+void pdbContainerDualCcmap(float dist, pdbCoordinateContainer_t *pdbCoordinateContainerI,  pdbCoordinateContainer_t *pdbCoordinateContainerJ) {
+    /*  ONE SET OF COORDINATES  */
+    double *x;
+    double *y;
+    double *z;
+    char *chainID;
+    char **resSeq;
+    char **resName;
+    char **atomName;
+    atom_t *atomList = NULL;
+    int nAtom = 0;
+
+    nAtom = pdbContainerToArrays(pdbCoordinateContainerI, &x, &y, &z, &chainID, &resSeq, &resName, &atomName);
+    atomList = readFromArrays(nAtom, x, y, z, chainID, resSeq, resName, atomName);
+
+    /*  OPTIONAL SECOND SET OF COORDINATES  */
+    double *x_other;
+    double *y_other;
+    double *z_other;
+    char *chainID_other;
+    char **resSeq_other;
+    char **resName_other;
+    char **atomName_other;
+    atom_t *atomList_other = NULL;
+    int nAtom_other = 0;
+    nAtom_other = pdbContainerToArrays(pdbCoordinateContainerJ, &x_other, &y_other, &z_other, &chainID_other, &resSeq_other, &resName_other, &atomName_other);
+    atomList_other = readFromArrays(nAtom_other, x_other, y_other, z_other, chainID_other, resSeq_other, resName_other, atomName_other);
+
+    char *ccmap = residueContactMap_DUAL(atomList, nAtom, atomList_other, nAtom_other, dist);
+
+// CLEAR
+    atomList = destroyAtomList(atomList, nAtom);
+    atomList_other = destroyAtomList(atomList_other, nAtom_other);
+    freeBuffers(x, y, z, chainID, resSeq, resName, atomName, nAtom);
+    freeBuffers(x_other, y_other, z_other, chainID_other, resSeq_other, resName_other, atomName_other, nAtom_other);
+
+    printf("JSON Dual ccmap\n%s\n", ccmap);
+    free(ccmap);
+}
 
 void stringToThreeFloats(char *input, float (*vector)[3]) {
     char *err, *p = input;
@@ -409,19 +448,25 @@ int main (int argc, char *argv[]) {
         //pdbCoordinateContainerJ = pdbFileToContainer(jFile);
     }
 
+
+
+// No Distance, no ccmap computations
+    if (optDist != NULL)
+        if(pdbCoordinateContainerI != NULL && pdbCoordinateContainerJ != NULL) {
+            pdbContainerDualCcmap(atof(optDist), pdbCoordinateContainerI, pdbCoordinateContainerJ);
+    }
+
+
+// Going out
     if(outFile != NULL) {
         pdbContainerToFile(pdbCoordinateContainerJ, outFile);
     }
 
-
-// No Distance, no ccmap computations
-    if (optDist == NULL) {
-    }
-
     fprintf(stderr,"Exiting\n");
+    if (pdbCoordinateContainerI != NULL)
+        destroyPdbCoordinateContainer(pdbCoordinateContainerI);
     if (pdbCoordinateContainerJ != NULL)
         destroyPdbCoordinateContainer(pdbCoordinateContainerJ);
-
 
     exit(0);
 }

@@ -47,3 +47,4 @@ pdbCoordinateContainer_t *pdbFileToContainer(char *fileName);
 pdbCoordinateContainer_t *destroyPdbCoordinateContainer(pdbCoordinateContainer_t *pdbCoordinateContainer);
 void createAtomRecord(char *recordString, atomRecord_t *newAtom);
 void stringifyAtomRecord(atomRecord_t *atomRecord, char *atomRecordString);
+int pdbContainerToArrays(pdbCoordinateContainer_t *pdbCoordinateContainer, double **x, double **y, double **z, char **chainID, char ***resID, char ***resName,  char ***name);

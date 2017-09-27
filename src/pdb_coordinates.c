@@ -201,3 +201,30 @@ void pdbContainerToFile(pdbCoordinateContainer_t *pdbCoordinateContainer, char *
     }
     fclose(fp);
 }
+
+int pdbContainerToArrays(pdbCoordinateContainer_t *pdbCoordinateContainer, double **x, double **y, double **z, char **chainID, char ***resID, char ***resName,  char ***name) {
+
+    int n = pdbCoordinateContainer->atomCount;
+
+    *x = malloc(n * sizeof(double));
+    *y = malloc(n * sizeof(double));
+    *z = malloc(n * sizeof(double));
+    *chainID = malloc(n * sizeof(char));
+    *resID = malloc(n * sizeof(char*));
+    *resName = malloc(n * sizeof(char*));
+    *name = malloc(n * sizeof(char*));
+    for (int i = 0 ; i < n ; i++) {
+
+        (*chainID)[i] = pdbCoordinateContainer->atomRecordArray[i].chainID;
+        (*x)[i] = pdbCoordinateContainer->atomRecordArray[i].x;
+        (*y)[i] = pdbCoordinateContainer->atomRecordArray[i].y;
+        (*z)[i] = pdbCoordinateContainer->atomRecordArray[i].z;
+        (*resID)[i] = malloc((strlen(pdbCoordinateContainer->atomRecordArray[i].resSeq) + 1) * sizeof(char));
+        strcpy((*resID)[i], pdbCoordinateContainer->atomRecordArray[i].resSeq);
+        (*resName)[i] = malloc((strlen(pdbCoordinateContainer->atomRecordArray[i].resName) + 1) * sizeof(char));
+        strcpy((*resName)[i], pdbCoordinateContainer->atomRecordArray[i].resName);
+        (*name)[i] = malloc((strlen(pdbCoordinateContainer->atomRecordArray[i].name) + 1) * sizeof(char));
+        strcpy((*name)[i], pdbCoordinateContainer->atomRecordArray[i].name);
+    }
+    return n;
+}
