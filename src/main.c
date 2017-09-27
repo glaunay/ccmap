@@ -7,6 +7,7 @@
 #include "mesh.h"
 #include <unistd.h>
 #include "pdb_coordinates.h"
+#include <getopt.h>
 
 //#include <stddef.h>
 //atom_t *readCoordinates(char *fname, int *_nAtom);
@@ -208,7 +209,9 @@ void runSingle( char *fname, float dist, int (*readerFunc)(char*, double**, doub
     free(ccmap);
 }
 
-void runDual( char *iFname, char *jFname, float dist, int (*readerFunc)(char*, double**, double**, double**, char**, char***, char***, char***) ) {
+void runDual( char *iFname, char *jFname, float dist,
+              int (*readerFunc)(char*, double**, double**, double**, char**, char***, char***, char***)
+              ) {
     /*  ONE SET OF COORDINATES  */
     double *x;
     double *y;
@@ -248,37 +251,53 @@ void runDual( char *iFname, char *jFname, float dist, int (*readerFunc)(char*, d
     free(ccmap);
 }
 
-void parseTransform(char *eulerString, char *translateString, float (*eulers)[3], float (*translate)[3]){
-    fprintf(stderr, "Coucou\n%s\n", eulerString);
-    fprintf(stderr, "-->%f\n", (*eulers)[0]);
 
-    char *err, *p = eulerString;
+void stringToThreeFloats(char *input, float (*vector)[3]) {
+    char *err, *p = input;
+    if (input == NULL) return;
     float val;
     int i = 0;
     while (*p) {
         val = strtod(p, &err);
         if (p == err) p++;
         else if ((err == NULL) || (*err == 0)) {
-            (*eulers)[i] = val;
+            (*vector)[i] = val;
             i++;
-            printf("Value: %f\n", val); break;
+           // printf("Value: %f\n", val);
+            break;
         }
         else {
-            printf("errValue: %f\n", val);
+            //printf("errValue: %f\n", val);
             p = err + 1;
-            (*eulers)[i] = val;
+            (*vector)[i] = val;
             i++;
         }
     }
-/*
-    if(eulerString != NULL)
-        scanf(eulerString, "%g,%g,%g", &(eulers[0]), &(eulers[1]), &(eulers[2]);
-    fprintf(stderr, "Coucou2\n");
-    if(translateString != NULL)
-        scanf(eulerString, "%g,%g,%g", (*translate)[0], (*translate)[1], (*translate)[2]);
-*/
 }
 
+void parseTransform(char *eulerString, char *translateString, float (*eulers)[3], float (*translate)[3]){
+    if (eulerString != NULL){
+        stringToThreeFloats(eulerString, eulers);
+        //printf ("Euler's angles values %g %g %g\n", (*eulers)[0], (*eulers)[1], (*eulers)[2]);
+    }
+    if (translateString != NULL){
+        stringToThreeFloats(translateString, translate);
+        //printf ("Cartesian translation vector %g %g %g\n", (*translate)[0], (*translate)[1], (*translate)[2]);
+    }
+}
+
+
+
+
+/*
+    Main program to develop and test C library to manipulate PDB structure in Python 2.7
+    --rec ReceptorPdbFile
+    --lig LigandPdbFile
+    --fmt format (default is PDB)
+    --eul Euler's angles triplet
+    --trs Cartesian translation vector
+    --dst Treshold distance to compute contact
+*/
 
 int main (int argc, char *argv[]) {
 
@@ -290,6 +309,7 @@ int main (int argc, char *argv[]) {
     char *iFile = NULL;
     char *jFile = NULL;
     char *pdbFile = NULL;
+    char *outFile = NULL;
     char *euler = NULL;
     char *translate = NULL;
     extern char *optarg;
@@ -300,54 +320,112 @@ int main (int argc, char *argv[]) {
     float eulerAngle[3]  = { 0.0, 0.0, 0.0 };
     float translation[3] = { 0.0, 0.0, 0.0 };
 
+    pdbCoordinateContainer_t *pdbCoordinateContainerJ = NULL;
+    pdbCoordinateContainer_t *pdbCoordinateContainerI = NULL;
 //int readFile(char *fname, double **x, double **y, double **z, char **chainID, char ***resID, char ***resName,  char ***name) {
 
 
     int (*readerFunc)(char*, double**, double**, double**, char**, char***, char***, char***) = NULL;
-    while ((c = getopt(argc, argv, "a:b:d:p:q:e:")) != -1) {
+
+    readerFunc = &readPdbFile;
+    const char    *short_opt = "ha:b:e:t:f:d:w:";
+    struct option   long_opt[] =
+    {
+        {"help",               no_argument, NULL, 'h'},
+        {"fmt",          required_argument, NULL, 'f'},
+        {"rec",          required_argument, NULL, 'a'},
+        {"lig",          required_argument, NULL, 'b'},
+        {"euler",          required_argument, NULL, 'e'},
+        {"trans",          required_argument, NULL, 't'},
+        {"dist",          required_argument, NULL, 'd'},
+        {"dump",          required_argument, NULL, 'w'},
+        {NULL,            0,                NULL, 0  }
+    };
+
+    while((c = getopt_long(argc, argv, short_opt, long_opt, NULL)) != -1) {
         switch(c) {
-             case 't':
-                translate = optarg;
-                break;
-             case 'e':
-                euler = optarg;
-                break;
-            case 'p':
-                iFile = optarg;
-                readerFunc = &readPdbFile;
-                break;
-            case 'q':
-                jFile = optarg;
-                break;
+            case -1:       /* no more arguments */
+            case 0:        /* long options toggles */
+            break;
+
             case 'a':
-                iFile = optarg;
-                readerFunc = &readFile;
+                iFile = strdup(optarg);
+                printf("you entered REC \"%s\"\n", optarg);
                 break;
             case 'b':
-                jFile = optarg;
+                jFile = strdup(optarg);
+                printf("you entered LIG \"%s\"\n", jFile);
+                //fprintf(stderr, "you entered LIG \"%s\"\n", jFile);
+                break;
+            case 't':
+                translate = strdup(optarg);
+                fprintf(stderr, "%s\n", translate);
+                break;
+            case 'e':
+                euler = strdup(optarg);
+                fprintf(stderr, "%s\n", euler);
                 break;
             case 'd':
-                optDist = optarg;
+                optDist = strdup(optarg);
                 break;
-                case ':':/* -f or -o without operand */
-                    fprintf(stderr,
-                            "Option -%c requires an operand\n", optopt);
-                    errflg++;
-                    break;
+            case 'w':
+                outFile = strdup(optarg);
+                fprintf(stderr, "will dump to %s\n", outFile);
+                break;
+            case 'h':
+                printf("Usage: %s [OPTIONS]\n", argv[0]);
+                printf("  -f file                   file\n");
+                printf("  -h, --help                print this help and exit\n");
+                printf("\n");
+                return(0);
+
+            case ':':
             case '?':
-                    fprintf(stderr,
-                            "Unrecognized option: -%c\n", optopt);
-            errflg++;
+                fprintf(stderr, "Try `%s --help' for more information.\n", argv[0]);
+                return(-2);
+
+            default:
+                fprintf(stderr, "%s: invalid option -- %c\n", argv[0], c);
+                fprintf(stderr, "Try `%s --help' for more information.\n", argv[0]);
+                return(-2);
         }
     }
 
+    if (iFile != NULL)
+        pdbCoordinateContainerI = pdbFileToContainer(iFile);
 
-    if (translate != NULL || euler != NULL) {
+    if (jFile != NULL)
+        pdbCoordinateContainerJ = pdbFileToContainer(jFile);
+
+
+     if (translate != NULL || euler != NULL) {
         transflg++;
         parseTransform(euler, translate, &eulerAngle, &translation);
-        printf("%f %f %f , %f %f %f\n", eulerAngle[0], eulerAngle[1], eulerAngle[2], translation[0], translation[1],translation[2]);
     }
 
+    if (jFile != NULL && transflg) {
+        printf("Transformation to Ligand molecule\n");
+        transformPdbCoordinateContainer(pdbCoordinateContainerJ, eulerAngle, translation);
+        //pdbCoordinateContainerJ = pdbFileToContainer(jFile);
+    }
+
+    if(outFile != NULL) {
+        pdbContainerToFile(pdbCoordinateContainerJ, outFile);
+    }
+
+
+// No Distance, no ccmap computations
+    if (optDist == NULL) {
+    }
+
+    fprintf(stderr,"Exiting\n");
+    if (pdbCoordinateContainerJ != NULL)
+        destroyPdbCoordinateContainer(pdbCoordinateContainerJ);
+
+
+    exit(0);
+}
+/*
     if ( errflg || optDist == NULL || iFile == NULL) {
         fprintf(stderr, "usage: . . . ");
         exit(2);
@@ -359,22 +437,5 @@ int main (int argc, char *argv[]) {
         runSingle(iFile, step, readerFunc);
     else
         runDual(iFile, jFile, step, readerFunc);
-
-    exit(1);
-
-// Listing neighbouring cells
-    //meshDummy(6, 3, 3);
-
-/*
-    printf ("--->%s\n", argv[1]);
-
-    atomList = readCoordinates(argv[1], &nAtom);
-    printf("Read a %d atoms list\n", nAtom);
-    for (int i = 0 ; i < nAtom ; i++) {
-        printf("[%d] %g %g %g\n", i, atomList[i].x, atomList[i].y, atomList[i].z);
-    }
-
-    mesh(atomList, nAtom, step);
 */
-}
 

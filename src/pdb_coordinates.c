@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-
+#include "decoygen.h"
 
 #define MAX_RECORD 200000
 /*
@@ -24,8 +24,12 @@ COLUMNS        DATA  TYPE    FIELD        DEFINITION
 77 - 78        LString(2)    element      Element symbol, right-justified.
 79 - 80        LString(2)    charge       Charge  on the atom.
 */
-pdbCoordinateContainer_t *pdbFileToContainer(char *fileName) {
 
+// Deal w/ atom record with truncated lines by filling last position with whitespaces
+pdbCoordinateContainer_t *pdbFileToContainer(char *fileName) {
+    fprintf(stderr, "GOING IN\n");
+    fprintf(stderr, "DOING %s\n", fileName);
+    fprintf(stderr, "GOING IN\n");
     pdbCoordinateContainer_t *pdbCoordinateContainer = malloc(sizeof(pdbCoordinateContainer_t));
     fprintf(stderr, "Reading pdb file %s\n", fileName);
 
@@ -43,13 +47,25 @@ pdbCoordinateContainer_t *pdbFileToContainer(char *fileName) {
     char recordType[7];
 
 
-
+    int terminalOffset;
     while(fgets(lineBuffer, 100, fp)) {
         memcpy( recordType, &lineBuffer[0], 6 );
         recordType[6] = '\0';
         if (strcmp(recordType, atomFlag) != 0) continue;
         strcpy(atomRecordBuffer[atomCount], lineBuffer);
         atomCount++;
+        if(atomCount == 1) {
+            for (terminalOffset = 80 ; terminalOffset >= 0 ; terminalOffset--) {
+                printf("-->%c",atomRecordBuffer[0][terminalOffset]);
+                if(atomRecordBuffer[0][terminalOffset] == '\n') {
+                    break;
+                }
+            }
+            printf("Terminal offset is %d\n", terminalOffset);
+        }
+        for (int i = terminalOffset; i < 81 ; i++) {
+            atomRecordBuffer[atomCount - 1][i] = ' ';
+        }
         //printf("%s", lineBuffer);
     }
     fclose(fp);
@@ -136,13 +152,52 @@ void createAtomRecord(char *recordString, atomRecord_t *newAtom) {
 
     //return newAtom;
 }
+/*
+    Apply optional euler's angles rotation and or translation to passed pdbCoordinateContainer
+*/
+void transformPdbCoordinateContainer(pdbCoordinateContainer_t *pdbCoordinateContainer, float *euler, float *translation) {
+    atomRecord_t *atom;
+    float nX, nY, nZ;
+    if (euler != NULL) {
+        for (int i = 0 ; i < pdbCoordinateContainer->atomCount ; i++){
+            atom = &pdbCoordinateContainer->atomRecordArray[i];
+            rotateAtom(atom->x,  atom->y,  atom->z,
+                       &nX    ,  &nY    ,  &nZ    ,
+                      euler[0],  euler[1], euler[2]);
+            atom->x = nX;
+            atom->y = nY;
+            atom->z = nZ;
+        }
+    }
+    if (translation != NULL) {
+        for (int i = 0 ; i < pdbCoordinateContainer->atomCount ; i++){
+            atom = &pdbCoordinateContainer->atomRecordArray[i];
+            atom->x += translation[0];
+            atom->y += translation[1];
+            atom->z += translation[2];
+        }
+    }
+}
 
 
 void stringifyAtomRecord(atomRecord_t *atomRecord, char *atomRecordString) {
+    //printf("|%s|\n", atomRecord->recordName);
     sprintf(atomRecordString, "%6s%5d %4s%C%3s %c%4s%c   %8.3f%8.3f%8.3f%6.2f%6.2f          %-2s%-2s",\
             atomRecord->recordName, atomRecord->serial, atomRecord->name, atomRecord->altLoc,\
             atomRecord->resName, atomRecord->chainID, atomRecord->resSeq, atomRecord->iCode,\
             atomRecord->x, atomRecord->y, atomRecord->z, atomRecord->occupancy,\
             atomRecord->tempFactor, atomRecord->element, atomRecord->charge);
 
+}
+
+void pdbContainerToFile(pdbCoordinateContainer_t *pdbCoordinateContainer, char *fname) {
+    FILE *fp;
+    fp=fopen(fname, "w");
+    char buffer[120];
+    for (int i = 0 ; i < pdbCoordinateContainer->atomCount; i++) {
+        stringifyAtomRecord( &pdbCoordinateContainer->atomRecordArray[i], buffer);
+        //printf("->%s", buffer);
+        fprintf(fp, "%s\n", buffer);
+    }
+    fclose(fp);
 }

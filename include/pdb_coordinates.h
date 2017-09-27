@@ -40,8 +40,9 @@ COLUMNS        DATA  TYPE    FIELD        DEFINITION
 79 - 80        LString(2)    charge       Charge  on the atom.
 */
 
+void transformPdbCoordinateContainer(pdbCoordinateContainer_t *pdbCoordinateContainer, float *euler, float *translation);
 
-
+void pdbContainerToFile(pdbCoordinateContainer_t *pdbCoordinateContainer, char *fname);
 pdbCoordinateContainer_t *pdbFileToContainer(char *fileName);
 pdbCoordinateContainer_t *destroyPdbCoordinateContainer(pdbCoordinateContainer_t *pdbCoordinateContainer);
 void createAtomRecord(char *recordString, atomRecord_t *newAtom);
