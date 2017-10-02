@@ -42,7 +42,7 @@ COLUMNS        DATA  TYPE    FIELD        DEFINITION
 
 void transformPdbCoordinateContainer(pdbCoordinateContainer_t *pdbCoordinateContainer, float *euler, float *translation);
 
-void pdbContainerToFile(pdbCoordinateContainer_t *pdbCoordinateContainer, char *fname);
+void pdbContainerToFile(pdbCoordinateContainer_t *pdbCoordinateContainer, char *fname, char *mode);
 pdbCoordinateContainer_t *pdbFileToContainer(char *fileName);
 pdbCoordinateContainer_t *destroyPdbCoordinateContainer(pdbCoordinateContainer_t *pdbCoordinateContainer);
 void createAtomRecord(char *recordString, atomRecord_t *newAtom);

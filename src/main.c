@@ -246,8 +246,10 @@ void runDual( char *iFname, char *jFname, float dist,
     atomList_other = destroyAtomList(atomList_other, nAtom_other);
     freeBuffers(x, y, z, chainID, resSeq, resName, atomName, nAtom);
     freeBuffers(x_other, y_other, z_other, chainID_other, resSeq_other, resName_other, atomName_other, nAtom_other);
-
-    printf("JSON Dual ccmap\n%s\n", ccmap);
+#ifdef DEBUG
+    fprintf(stderr, "JSON Dual ccmap\\n");
+#endif
+    printf("%s\n", ccmap);
     free(ccmap);
 }
 
@@ -286,8 +288,10 @@ void pdbContainerDualCcmap(float dist, pdbCoordinateContainer_t *pdbCoordinateCo
     atomList_other = destroyAtomList(atomList_other, nAtom_other);
     freeBuffers(x, y, z, chainID, resSeq, resName, atomName, nAtom);
     freeBuffers(x_other, y_other, z_other, chainID_other, resSeq_other, resName_other, atomName_other, nAtom_other);
-
-    printf("JSON Dual ccmap\n%s\n", ccmap);
+#ifdef DEBUG
+    fprintf(stderr, "JSON Dual ccmap\n");
+#endif
+    printf("%s\n", ccmap);
     free(ccmap);
 }
 
@@ -302,27 +306,35 @@ void stringToThreeFloats(char *input, float (*vector)[3]) {
         else if ((err == NULL) || (*err == 0)) {
             (*vector)[i] = val;
             i++;
-           // printf("Value: %f\n", val);
+        //    printf("Value: %f\n", val);
             break;
         }
         else {
-            //printf("errValue: %f\n", val);
+      //      printf("errValue: %f\n", val);
             p = err + 1;
             (*vector)[i] = val;
             i++;
         }
     }
+    //printf("->%g %g %g\n", (*vector)[0], (*vector)[1], (*vector)[2]);
+
 }
 
+
 void parseTransform(char *eulerString, char *translateString, float (*eulers)[3], float (*translate)[3]){
-    if (eulerString != NULL){
-        stringToThreeFloats(eulerString, eulers);
-        //printf ("Euler's angles values %g %g %g\n", (*eulers)[0], (*eulers)[1], (*eulers)[2]);
-    }
     if (translateString != NULL){
         stringToThreeFloats(translateString, translate);
         //printf ("Cartesian translation vector %g %g %g\n", (*translate)[0], (*translate)[1], (*translate)[2]);
+    } else {
+       // translate = NULL;
     }
+    if (eulerString != NULL){
+        stringToThreeFloats(eulerString, eulers);
+        //printf ("Euler's angles values %g %g %g\n", (*eulers)[0], (*eulers)[1], (*eulers)[2]);
+    } else {
+        //eulers = NULL;
+    }
+
 }
 
 
@@ -333,8 +345,13 @@ void parseTransform(char *eulerString, char *translateString, float (*eulers)[3]
     --rec ReceptorPdbFile
     --lig LigandPdbFile
     --fmt format (default is PDB)
-    --eul Euler's angles triplet
-    --trs Cartesian translation vector
+
+    --transLigInit Initial x,y,z translation vector to origin
+    --eulerLig Euler angle combination to final ligand orientation (intended to be performed w/ ligant centered onto origin)
+    --transLig" Final x,y,z translation vector from rotated/centered pose to final ligand pose
+    --transRecInit" Initial x,y,z translation vector to origin
+    --eulerRecInit", Optional rotation for receptor (intended to be performed w/ ligant centered onto origin)
+
     --dst Treshold distance to compute contact
 */
 
@@ -347,17 +364,22 @@ int main (int argc, char *argv[]) {
     int c;
     char *iFile = NULL;
     char *jFile = NULL;
-    char *pdbFile = NULL;
     char *outFile = NULL;
-    char *euler = NULL;
-    char *translate = NULL;
+    char *eulerREC = NULL;
+    char *eulerLIG = NULL;
+    char *translateREC = NULL;
+    char *translateLIG = NULL;
+    char *translateLIG2 = NULL;
     extern char *optarg;
     extern int optind, optopt, opterr;
-    int errflg = 0;
-    int transflg = 0;
+    int ligTransflg = 0;
+    int recTransflg = 0;
     char *optDist = NULL;
-    float eulerAngle[3]  = { 0.0, 0.0, 0.0 };
-    float translation[3] = { 0.0, 0.0, 0.0 };
+    float eulerAngleREC[3]  = { 0.0, 0.0, 0.0 };
+    float translationREC[3] = { 0.0, 0.0, 0.0 };
+    float eulerAngleLIG[3]  = { 0.0, 0.0, 0.0 };
+    float translationLIG[3] = { 0.0, 0.0, 0.0 };
+    float translationLIG2[3] = { 0.0, 0.0, 0.0 };
 
     pdbCoordinateContainer_t *pdbCoordinateContainerJ = NULL;
     pdbCoordinateContainer_t *pdbCoordinateContainerI = NULL;
@@ -374,8 +396,15 @@ int main (int argc, char *argv[]) {
         {"fmt",          required_argument, NULL, 'f'},
         {"rec",          required_argument, NULL, 'a'},
         {"lig",          required_argument, NULL, 'b'},
-        {"euler",          required_argument, NULL, 'e'},
-        {"trans",          required_argument, NULL, 't'},
+
+        {"transLigInit",          required_argument, NULL, 'x'},
+        {"eulerLig",          required_argument, NULL, 'y'},
+        {"transLig",          required_argument, NULL, 'z'},
+
+        {"transRecInit",          required_argument, NULL, 'u'},
+        {"eulerRecInit",          required_argument, NULL, 'v'},
+
+
         {"dist",          required_argument, NULL, 'd'},
         {"dump",          required_argument, NULL, 'w'},
         {NULL,            0,                NULL, 0  }
@@ -389,36 +418,45 @@ int main (int argc, char *argv[]) {
 
             case 'a':
                 iFile = strdup(optarg);
-                printf("you entered REC \"%s\"\n", optarg);
                 break;
             case 'b':
                 jFile = strdup(optarg);
-                printf("you entered LIG \"%s\"\n", jFile);
-                //fprintf(stderr, "you entered LIG \"%s\"\n", jFile);
                 break;
-            case 't':
-                translate = strdup(optarg);
-                fprintf(stderr, "%s\n", translate);
+            case 'x':
+                translateLIG = strdup(optarg);
                 break;
-            case 'e':
-                euler = strdup(optarg);
-                fprintf(stderr, "%s\n", euler);
+            case 'y':
+                eulerLIG = strdup(optarg);
                 break;
+            case 'z':
+                translateLIG2 = strdup(optarg);
+                break;
+            case 'u':
+                translateREC = strdup(optarg);
+                break;
+            case 'v':
+                eulerREC = strdup(optarg);
+                break;
+
             case 'd':
                 optDist = strdup(optarg);
                 break;
             case 'w':
                 outFile = strdup(optarg);
-                fprintf(stderr, "will dump to %s\n", outFile);
                 break;
             case 'h':
-                printf("Usage: %s [OPTIONS]\n", argv[0]);
-                printf("  -f file                   file\n");
-                printf("  -h, --help                print this help and exit\n");
+                printf("Main program to develop and test C library to manipulate PDB structure in Python 2.7\n");
+                printf("--rec ReceptorPdbFile\n--lig LigandPdbFile\n--fmt format (default is PDB)\n"),
+                printf("--transLigInit Initial x,y,z translation vector to origin\n");
+                printf("--eulerLig Euler angle combination to final ligand orientation (intended to be performed w/ ligant centered onto origin)\n");
+                printf("--transLig Final x,y,z translation vector from rotated/centered pose to final ligand pose\n");
+                printf("--transRecInit Initial x,y,z translation vector to origin\n");
+                printf("--eulerRecInit Optional rotation for receptor (intended to be performed w/ ligant centered onto origin\n");
+                printf("--dst Treshold distance to compute contact\n");
+                printf("-h, --help                print this help and exit\n");
                 printf("\n");
                 return(0);
-
-            case ':':
+      //      case ':':
             case '?':
                 fprintf(stderr, "Try `%s --help' for more information.\n", argv[0]);
                 return(-2);
@@ -436,19 +474,29 @@ int main (int argc, char *argv[]) {
     if (jFile != NULL)
         pdbCoordinateContainerJ = pdbFileToContainer(jFile);
 
-
-     if (translate != NULL || euler != NULL) {
-        transflg++;
-        parseTransform(euler, translate, &eulerAngle, &translation);
+// Centering Receptor, eventual rotation
+    if (translateREC != NULL || eulerREC != NULL) {
+        printf("Moving receptor to initial position\n");
+        parseTransform(eulerREC, translateREC, &eulerAngleREC, &translationREC);
+        if (pdbCoordinateContainerI != NULL)
+            transformPdbCoordinateContainer(pdbCoordinateContainerI, eulerAngleREC, translationREC);
     }
 
-    if (jFile != NULL && transflg) {
-        printf("Transformation to Ligand molecule\n");
-        transformPdbCoordinateContainer(pdbCoordinateContainerJ, eulerAngle, translation);
-        //pdbCoordinateContainerJ = pdbFileToContainer(jFile);
+// Centering Ligand then rotate
+     if (translateLIG != NULL || eulerLIG != NULL) {
+        printf("Moving ligand to initial position AND rotating to final orientation\n");
+        parseTransform(eulerLIG, translateLIG, &eulerAngleLIG, &translationLIG);
+        if (pdbCoordinateContainerJ != NULL)
+            transformPdbCoordinateContainer(pdbCoordinateContainerJ, eulerAngleLIG, translationLIG);
+     }
+
+// Move ligand to final position
+    if (translationLIG2 != NULL) {
+        printf("Moving ligand to final position\n");
+        parseTransform(NULL, translateLIG2, NULL, &translationLIG2);
+        if (pdbCoordinateContainerJ != NULL)
+            transformPdbCoordinateContainer(pdbCoordinateContainerJ, NULL, translationLIG2);
     }
-
-
 
 // No Distance, no ccmap computations
     if (optDist != NULL)
@@ -456,17 +504,29 @@ int main (int argc, char *argv[]) {
             pdbContainerDualCcmap(atof(optDist), pdbCoordinateContainerI, pdbCoordinateContainerJ);
     }
 
-
 // Going out
     if(outFile != NULL) {
-        pdbContainerToFile(pdbCoordinateContainerJ, outFile);
+        pdbContainerToFile(pdbCoordinateContainerI, outFile, "w");
+        if (pdbCoordinateContainerJ != NULL)
+            pdbContainerToFile(pdbCoordinateContainerJ, outFile, "a");
     }
 
-    fprintf(stderr,"Exiting\n");
+#ifdef DEBUG
+     fprintf(stderr,"Exiting\n");
+
+     fprintf(stderr, "REC_tr: %g, %g, %g\nLIG_tr: %g, %g, %g\nLIG_euler: %g, %g, %g\nLIG_tr_pose: %g, %g, %g\n", \
+            translationREC[0], translationREC[1], translationREC[2], \
+            translationLIG[0], translationLIG[1], translationLIG[2], \
+            eulerAngleLIG[0],  eulerAngleLIG[1] , eulerAngleLIG[2] , \
+            translationLIG2[0], translationLIG2[1], translationLIG2[2]);
+#endif
+
     if (pdbCoordinateContainerI != NULL)
         destroyPdbCoordinateContainer(pdbCoordinateContainerI);
     if (pdbCoordinateContainerJ != NULL)
         destroyPdbCoordinateContainer(pdbCoordinateContainerJ);
+
+
 
     exit(0);
 }
