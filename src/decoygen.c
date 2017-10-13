@@ -30,3 +30,13 @@ void rotateAtom (float oldX, float oldY, float oldZ,
     *newZ = r31 * oldX + r32 * oldY + r33 * oldZ;
 
 }
+
+void translateAtom (float oldX, float oldY, float oldZ,
+                 float *newX, float *newY, float *newZ,
+                 float xOffset, float yOffset, float zOffset )
+{
+
+    *newX = oldX + xOffset;
+    *newY = oldY + yOffset;
+    *newZ = oldZ + zOffset;
+}
