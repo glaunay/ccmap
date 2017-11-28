@@ -253,6 +253,69 @@ void runDual( char *iFname, char *jFname, float dist,
     free(ccmap);
 }
 
+
+// This function exhausticely list atoms forming contacts
+void pdbContainerDualAtomList(float dist, pdbCoordinateContainer_t *pdbCoordinateContainerI,  pdbCoordinateContainer_t *pdbCoordinateContainerJ, char *iTag, char *jTag) {
+
+    fprintf(stderr,"Listing atoms\n");
+    /*  ONE SET OF COORDINATES  */
+    double *x;
+    double *y;
+    double *z;
+    char *chainID;
+    char **resSeq;
+    char **resName;
+    char **atomName;
+    atom_t *atomList = NULL;
+    int nAtom = 0;
+
+    nAtom = pdbContainerToArrays(pdbCoordinateContainerI, &x, &y, &z, &chainID, &resSeq, &resName, &atomName);
+    atomList = readFromArrays(nAtom, x, y, z, chainID, resSeq, resName, atomName);
+    int *atomListStatus = malloc(nAtom * sizeof(int));
+
+    /*  OPTIONAL SECOND SET OF COORDINATES  */
+    double *x_other;
+    double *y_other;
+    double *z_other;
+    char *chainID_other;
+    char **resSeq_other;
+    char **resName_other;
+    char **atomName_other;
+    atom_t *atomList_other = NULL;
+    int nAtom_other = 0;
+    nAtom_other = pdbContainerToArrays(pdbCoordinateContainerJ, &x_other, &y_other, &z_other, &chainID_other, &resSeq_other, &resName_other, &atomName_other);
+    atomList_other = readFromArrays(nAtom_other, x_other, y_other, z_other, chainID_other, resSeq_other, resName_other, atomName_other);
+    int *atomListStatus_other = malloc(nAtom_other * sizeof(int));
+
+
+    atomListInContact(atomList, nAtom, atomList_other, nAtom_other, dist, atomListStatus, atomListStatus_other);
+
+    char buffer[120];
+    printf("%s\n", iTag);
+    for (int i = 0; i < nAtom ; i++) {
+        if (atomListStatus[i]) {
+            stringifyAtomRecord( &pdbCoordinateContainerI->atomRecordArray[i], buffer);
+            printf("%s\n", buffer);
+        }
+    }
+    printf("%s\n", jTag);
+    for (int j = 0; j < nAtom_other ; j++) {
+        if (atomListStatus_other[j]) {
+            stringifyAtomRecord( &pdbCoordinateContainerJ->atomRecordArray[j], buffer);
+            printf("%s\n", buffer);
+        }
+    }
+
+    // CLEAR
+    atomList = destroyAtomList(atomList, nAtom);
+    atomList_other = destroyAtomList(atomList_other, nAtom_other);
+    freeBuffers(x, y, z, chainID, resSeq, resName, atomName, nAtom);
+    freeBuffers(x_other, y_other, z_other, chainID_other, resSeq_other, resName_other, atomName_other, nAtom_other);
+    free(atomListStatus);
+    free(atomListStatus_other);
+}
+
+
 void pdbContainerDualCcmap(float dist, pdbCoordinateContainer_t *pdbCoordinateContainerI,  pdbCoordinateContainer_t *pdbCoordinateContainerJ) {
     /*  ONE SET OF COORDINATES  */
     double *x;
@@ -370,6 +433,7 @@ int main (int argc, char *argv[]) {
     char *translateREC = NULL;
     char *translateLIG = NULL;
     char *translateLIG2 = NULL;
+    int listAtomOnly = 0;
     extern char *optarg;
     extern int optind, optopt, opterr;
     int ligTransflg = 0;
@@ -389,7 +453,7 @@ int main (int argc, char *argv[]) {
     int (*readerFunc)(char*, double**, double**, double**, char**, char***, char***, char***) = NULL;
 
     readerFunc = &readPdbFile;
-    const char    *short_opt = "ha:b:e:t:f:d:w:";
+    const char    *short_opt = "hla:b:e:t:f:d:w:";
     struct option   long_opt[] =
     {
         {"help",               no_argument, NULL, 'h'},
@@ -404,6 +468,7 @@ int main (int argc, char *argv[]) {
         {"transRecInit",          required_argument, NULL, 'u'},
         {"eulerRecInit",          required_argument, NULL, 'v'},
 
+        {"list",               no_argument, NULL, 'l'},
 
         {"dist",          required_argument, NULL, 'd'},
         {"dump",          required_argument, NULL, 'w'},
@@ -437,7 +502,9 @@ int main (int argc, char *argv[]) {
             case 'v':
                 eulerREC = strdup(optarg);
                 break;
-
+            case 'l':
+                listAtomOnly = 1;
+                break;
             case 'd':
                 optDist = strdup(optarg);
                 break;
@@ -453,6 +520,7 @@ int main (int argc, char *argv[]) {
                 printf("--transRecInit Initial x,y,z translation vector to origin\n");
                 printf("--eulerRecInit Optional rotation for receptor (intended to be performed w/ ligant centered onto origin\n");
                 printf("--dst Treshold distance to compute contact\n");
+                printf("--list, just list the atoms forming contacts\n");
                 printf("-h, --help                print this help and exit\n");
                 printf("\n");
                 return(0);
@@ -467,6 +535,7 @@ int main (int argc, char *argv[]) {
                 return(-2);
         }
     }
+
 
     if (iFile != NULL)
         pdbCoordinateContainerI = pdbFileToContainer(iFile);
@@ -491,7 +560,7 @@ int main (int argc, char *argv[]) {
      }
 
 // Move ligand to final position
-    if (translationLIG2 != NULL) {
+    if (translateLIG2 != NULL) {
         printf("Moving ligand to final position\n");
         parseTransform(NULL, translateLIG2, NULL, &translationLIG2);
         if (pdbCoordinateContainerJ != NULL)
@@ -501,7 +570,10 @@ int main (int argc, char *argv[]) {
 // No Distance, no ccmap computations
     if (optDist != NULL)
         if(pdbCoordinateContainerI != NULL && pdbCoordinateContainerJ != NULL) {
-            pdbContainerDualCcmap(atof(optDist), pdbCoordinateContainerI, pdbCoordinateContainerJ);
+            if (listAtomOnly)
+                pdbContainerDualAtomList(atof(optDist), pdbCoordinateContainerI, pdbCoordinateContainerJ, iFile, jFile);
+            else
+                pdbContainerDualCcmap(atof(optDist), pdbCoordinateContainerI, pdbCoordinateContainerJ);
     }
 
 // Going out

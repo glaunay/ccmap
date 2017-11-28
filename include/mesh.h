@@ -98,6 +98,9 @@ void dumpCellContent(cell_t *cell);
 void printContactList(residue_t *residueList);
 char *jsonifyContactList(residue_t *residueList);
 void jsonifyResidue(residue_t *residue, char *jsonString);
+void atomListInContact(atom_t *iAtomList, int iAtom, atom_t *jAtomList, int jAtom, double ctc_dist, int iAtomStatus[], int jAtomStatus[]);
+
+
 
 residue_t *createResidue(atom_t *atom, int n);
 residue_t *createResidueList(atom_t * atomList);

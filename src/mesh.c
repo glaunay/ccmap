@@ -117,6 +117,28 @@ static void printResidueCellProjection(char *resID, char chainID, meshContainer_
     }
 }
 
+void atomListInContact(atom_t *iAtomList, int iAtom, atom_t *jAtomList, int jAtom, double step, int iAtomStatus[], int jAtomStatus[]) {
+
+    meshContainer_t *results = createMeshContainer(iAtomList, iAtom, jAtomList, jAtom, step);
+
+    cell_t *cur_cell;
+    for (int i = 0; i < iAtom ; i++) {
+        iAtomStatus[i] = 0;
+        cur_cell = iAtomList[i].inCell;
+        if (cur_cell->jMemberCount > 0)
+            iAtomStatus[i] = 1;
+    }
+
+    for (int j = 0; j < jAtom ; j++) {
+        jAtomStatus[j] = 0;
+        cur_cell = jAtomList[j].inCell;
+        if (cur_cell->iMemberCount > 0)
+            jAtomStatus[j] = 1;
+    }
+
+    results = destroyMeshContainer(results);
+}
+
 
 char *residueContactMap_DUAL(atom_t *iAtomList, int iAtom, atom_t *jAtomList, int jAtom, double ctc_dist) {
     residue_t *iResidueList = createResidueList(iAtomList);
