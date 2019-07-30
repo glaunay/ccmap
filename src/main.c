@@ -5,6 +5,7 @@
 #include <string.h>
 #include <math.h>
 #include "mesh.h"
+#include "encode.h"
 #include <unistd.h>
 #include "pdb_coordinates.h"
 #include <getopt.h>
@@ -236,10 +237,11 @@ void runDual( char *iFname, char *jFname, float dist,
     char **atomName_other;
     atom_t *atomList_other = NULL;
     int nAtom_other = 0;
+    unsigned int finalLen=0;
     nAtom_other = (*readerFunc)(jFname, &x_other, &y_other, &z_other, &chainID_other, &resSeq_other, &resName_other, &atomName_other);
     atomList_other = readFromArrays(nAtom_other, x_other, y_other, z_other, chainID_other, resSeq_other, resName_other, atomName_other);
 
-    char *ccmap = residueContactMap_DUAL(atomList, nAtom, atomList_other, nAtom_other, dist);
+    int *ccmap = residueContactMap_DUAL(atomList, nAtom, atomList_other, nAtom_other, dist, &finalLen);
 
 // CLEAR
     atomList = destroyAtomList(atomList, nAtom);
@@ -249,7 +251,8 @@ void runDual( char *iFname, char *jFname, float dist,
 #ifdef DEBUG
     fprintf(stderr, "JSON Dual ccmap\\n");
 #endif
-    printf("%s\n", ccmap);
+    for(int i = 0 ; i < finalLen ; i++)
+        printf("%d\n", ccmap[i]);
     free(ccmap);
 }
 
@@ -344,7 +347,8 @@ void pdbContainerDualCcmap(float dist, pdbCoordinateContainer_t *pdbCoordinateCo
     nAtom_other = pdbContainerToArrays(pdbCoordinateContainerJ, &x_other, &y_other, &z_other, &chainID_other, &resSeq_other, &resName_other, &atomName_other);
     atomList_other = readFromArrays(nAtom_other, x_other, y_other, z_other, chainID_other, resSeq_other, resName_other, atomName_other);
 
-    char *ccmap = residueContactMap_DUAL(atomList, nAtom, atomList_other, nAtom_other, dist);
+    unsigned int finalLen=0;
+    int *ccmap = residueContactMap_DUAL(atomList, nAtom, atomList_other, nAtom_other, dist, &finalLen);
 
 // CLEAR
     atomList = destroyAtomList(atomList, nAtom);
@@ -354,7 +358,8 @@ void pdbContainerDualCcmap(float dist, pdbCoordinateContainer_t *pdbCoordinateCo
 #ifdef DEBUG
     fprintf(stderr, "JSON Dual ccmap\n");
 #endif
-    printf("%s\n", ccmap);
+    for(int i = 0 ; i < finalLen ; i++)
+        printf("%d\n", ccmap[i]);
     free(ccmap);
 }
 
@@ -615,4 +620,3 @@ int main (int argc, char *argv[]) {
     else
         runDual(iFile, jFile, step, readerFunc);
 */
-
